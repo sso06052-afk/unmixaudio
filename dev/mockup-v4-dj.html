@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>UnmixAudio — DJ Concept v4</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      /* Base grays */
+      --bg:      #0c0c0c;
+      --panel:   #161616;
+      --surface: #111;
+      --raised:  #1c1c1c;
+      --sunken:  #0a0a0a;
+      --border:  #252525;
+      --border2: #1e1e1e;
+
+      /* Text hierarchy */
+      --t1: #d0d0d0;  /* primary */
+      --t2: #777;     /* secondary */
+      --t3: #444;     /* tertiary */
+      --t4: #2a2a2a;  /* ghost */
+      --t5: #1a1a1a;  /* idle digits */
+
+      /* Functional accent: muted teal (Rekordbox waveform) — used sparingly */
+      --ac: #3fbfb0;
+      --ac-dim: rgba(63,191,176,0.08);
+      --ac-border: rgba(63,191,176,0.2);
+
+      /* Danger: muted red — rec/stop only */
+      --rd: #a04040;
+      --rd-dim: rgba(160,64,64,0.08);
+    }
+
+    body {
+      background: var(--bg);
+      font-family: 'Inter', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      gap: 40px;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 48px 24px;
+      min-height: 100vh;
+      flex-wrap: wrap;
+    }
+
+    .col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .state-label {
+      font-size: 9px; letter-spacing: 4px; color: var(--t4);
+      text-transform: uppercase; font-weight: 600;
+    }
+
+    /* ═══════════════════════════════════════════
+       PANEL
+    ═══════════════════════════════════════════ */
+    .panel {
+      width: 340px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.03) inset,
+        0 20px 60px rgba(0,0,0,0.7);
+    }
+
+    /* ── Header ───────────────────────────────── */
+    .hdr {
+      background: var(--surface);
+      border-bottom: 1px solid #222;
+      padding: 8px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .hdr-left { display: flex; align-items: center; gap: 7px; }
+    .hdr-mark {
+      width: 18px; height: 18px;
+      background: #1a1a1a; border: 1px solid #333;
+      border-radius: 2px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .hdr-name {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 3px; color: #555;
+      text-transform: uppercase;
+    }
+    .hdr-right { display: flex; align-items: center; gap: 5px; }
+    .hdr-btn {
+      width: 22px; height: 22px;
+      background: #1a1a1a; border: 1px solid #2a2a2a;
+      border-radius: 2px;
+      color: var(--t3); font-size: 10px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset;
+    }
+    .hdr-btn:hover { background: #222; border-color: #333; color: #555; }
+
+    /* Status badges */
+    .badge {
+      display: flex; align-items: center; gap: 4px;
+      padding: 2px 7px;
+      border: 1px solid var(--border); border-radius: 2px;
+      background: #1a1a1a;
+    }
+    .badge-dot { width: 4px; height: 4px; border-radius: 50%; background: #333; }
+    .badge-text { font-size: 8px; font-weight: 700; letter-spacing: 1.5px; color: var(--t3); }
+    .badge.live {
+      border-color: var(--ac-border);
+      background: var(--ac-dim);
+    }
+    .badge.live .badge-dot {
+      background: var(--ac);
+      box-shadow: 0 0 4px var(--ac);
+      animation: bk 1.3s ease-in-out infinite;
+    }
+    @keyframes bk { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .badge.live .badge-text { color: var(--ac); }
+
+    /* ── Tabs ──────────────────────────────────── */
+    .tabs {
+      display: flex;
+      background: var(--surface);
+      border-bottom: 1px solid #222;
+    }
+    .tab {
+      flex: 1; padding: 7px 0;
+      background: none; border: none;
+      border-bottom: 1px solid transparent;
+      font-family: inherit;
+      font-size: 9px; font-weight: 700;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      color: #333; cursor: pointer;
+      transition: color 0.1s;
+    }
+    .tab:hover { color: #555; }
+    .tab.on { color: var(--t1); border-bottom-color: var(--t2); }
+
+    /* ── Body ──────────────────────────────────── */
+    .body { padding: 10px; }
+
+    /* ── Now Playing ──────────────────────────── */
+    .np {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 9px;
+      background: #131313;
+      border: 1px solid #222;
+      border-radius: 2px;
+      margin-bottom: 8px;
+    }
+    .np-wave {
+      display: flex; align-items: center; gap: 1px;
+      width: 24px; height: 16px; flex-shrink: 0;
+    }
+    .np-bar { width: 1.5px; border-radius: 0; background: var(--ac); opacity: 0.5; }
+    .np-meta { flex: 1; min-width: 0; }
+    .np-title {
+      font-size: 10px; font-weight: 600; color: var(--t2);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .np-src { font-size: 8px; color: var(--t3); margin-top: 1px; }
+    .np-dur {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px; color: var(--t2); flex-shrink: 0;
+    }
+
+    /* ── Deck (recessed display) ──────────────── */
+    .deck {
+      background: var(--sunken);
+      border: 1px solid #222;
+      border-radius: 2px;
+      margin-bottom: 8px;
+      box-shadow: inset 0 1px 4px rgba(0,0,0,0.5);
+    }
+    .deck-in { padding: 12px 12px 10px; }
+    .deck-top {
+      display: flex; justify-content: space-between;
+      align-items: baseline;
+      padding-bottom: 6px; margin-bottom: 8px;
+      border-bottom: 1px solid #161616;
+    }
+    .deck-lbl {
+      font-size: 8px; font-weight: 700;
+      letter-spacing: 2.5px; color: var(--t4);
+      text-transform: uppercase;
+    }
+    .deck-info {
+      font-size: 8px; color: var(--t4);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── BPM ──────────────────────────────────── */
+    .bpm-row {
+      display: flex; align-items: flex-end; gap: 8px;
+      margin-bottom: 10px;
+    }
+    .bpm-left { display: flex; align-items: flex-end; gap: 2px; flex: 1; }
+    .bpm-val {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 72px; line-height: 0.88;
+      letter-spacing: -2px; color: var(--t1);
+      user-select: none;
+    }
+    .bpm-val.idle { color: var(--t5); }
+    .bpm-dec {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 28px; line-height: 1.4;
+      color: var(--t3); letter-spacing: -1px;
+      margin-bottom: 2px;
+    }
+    .bpm-right {
+      display: flex; flex-direction: column;
+      gap: 2px; padding-bottom: 4px;
+      align-items: flex-end;
+    }
+    .bpm-tag {
+      font-size: 8px; font-weight: 700;
+      letter-spacing: 2px; color: var(--t4);
+      text-transform: uppercase; margin-bottom: 2px;
+    }
+    .bpm-sub {
+      display: flex; align-items: center; gap: 4px;
+      padding: 2px 6px;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 1px;
+    }
+    .bpm-sub-arrow { font-size: 7px; color: var(--t4); }
+    .bpm-sub-num {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px; color: var(--t3);
+    }
+
+    /* ── VU Segments ──────────────────────────── */
+    .vu { display: flex; flex-direction: column; gap: 4px; }
+    .vu-r { display: flex; align-items: center; gap: 5px; }
+    .vu-ch {
+      font-size: 7px; font-weight: 800;
+      color: var(--t4); letter-spacing: 0.5px;
+      width: 8px; text-align: right; flex-shrink: 0;
+    }
+    .vu-segs { display: flex; gap: 1px; flex: 1; }
+    .s { width: 7px; height: 4px; background: #141414; }
+    /* Green → Yellow → Red like real hardware meters */
+    .s.g  { background: #2d8040; }
+    .s.y  { background: #8a7a20; }
+    .s.r  { background: #904030; }
+
+    /* ── Key / Camelot cards ──────────────────── */
+    .kc {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px; margin-bottom: 8px;
+    }
+    .kc-card {
+      background: var(--surface);
+      border: 1px solid #222;
+      border-radius: 2px; padding: 10px;
+    }
+    .kc-card.act { border-color: #333; }
+    .kc-lbl {
+      font-size: 7px; font-weight: 800;
+      letter-spacing: 2.5px; color: var(--t4);
+      text-transform: uppercase; margin-bottom: 6px;
+    }
+    .kc-v {
+      font-size: 18px; font-weight: 800;
+      color: var(--t1); line-height: 1;
+      margin-bottom: 2px; letter-spacing: -0.3px;
+    }
+    .kc-v.idle { color: var(--t5); }
+    .kc-s { font-size: 8px; color: var(--t3); }
+    .cam-v {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 30px; color: var(--ac);
+      line-height: 1; margin-bottom: 3px;
+    }
+    .cam-v.idle { color: var(--t5); }
+    .conf {
+      display: flex; align-items: center; gap: 5px;
+      margin-top: 5px;
+    }
+    .conf-bar {
+      flex: 1; height: 2px;
+      background: #1a1a1a; overflow: hidden;
+    }
+    .conf-fill { height: 100%; background: var(--t3); }
+    .conf-pct { font-size: 8px; color: var(--t3); font-weight: 600; }
+
+    /* ── Camelot Wheel ────────────────────────── */
+    .whl-block {
+      background: var(--sunken);
+      border: 1px solid #222;
+      border-radius: 2px;
+      padding: 10px; margin-bottom: 8px;
+    }
+    .blk-hdr {
+      display: flex; justify-content: space-between;
+      align-items: center; margin-bottom: 8px;
+    }
+    .blk-title {
+      font-size: 7px; font-weight: 800;
+      letter-spacing: 2.5px; color: var(--t4);
+      text-transform: uppercase;
+    }
+    .whl-leg { display: flex; gap: 8px; }
+    .whl-leg-i {
+      display: flex; align-items: center; gap: 3px;
+      font-size: 7px; color: var(--t4);
+    }
+    .whl-dot { width: 4px; height: 4px; }
+    .whl-center { display: flex; justify-content: center; }
+
+    /* ── Scale ────────────────────────────────── */
+    .scl-block { margin-bottom: 8px; }
+    .scl-hdr {
+      display: flex; justify-content: space-between;
+      align-items: center; margin-bottom: 6px;
+    }
+    .scl-mode {
+      font-size: 7px; font-weight: 700;
+      color: var(--t4); padding: 2px 6px;
+      background: var(--surface); border: 1px solid var(--border2);
+      border-radius: 1px; letter-spacing: 0.5px;
+    }
+    .notes { display: flex; gap: 2px; }
+    .note {
+      flex: 1; text-align: center;
+      padding: 5px 0; font-size: 9px; font-weight: 700;
+      background: var(--surface); border: 1px solid var(--border2);
+      border-radius: 1px; color: #222;
+    }
+    .note.root {
+      background: var(--ac-dim);
+      border-color: var(--ac-border);
+      color: var(--ac);
+    }
+    .note.on {
+      background: #151515; border-color: #333;
+      color: var(--t2);
+    }
+
+    /* ── Compat keys ──────────────────────────── */
+    .compat { margin-bottom: 8px; }
+    .compat-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+    .chip {
+      display: flex; align-items: center; gap: 4px;
+      padding: 3px 8px;
+      background: #131313; border: 1px solid #222;
+      border-radius: 1px;
+      font-size: 9px; font-weight: 600; color: var(--t3);
+      cursor: pointer; transition: all 0.08s;
+    }
+    .chip-code {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px; color: var(--t4);
+    }
+    .chip.adj { border-color: var(--ac-border); background: var(--ac-dim); }
+    .chip.adj .chip-code { color: var(--ac); opacity: 0.5; }
+    .chip:hover { border-color: #444; color: var(--t2); }
+    .chip:hover .chip-code { color: var(--t3); }
+
+    /* ── Divider ──────────────────────────────── */
+    .div { height: 1px; background: var(--border2); margin: 8px 0; }
+
+    /* ── Buttons (hardware feel) ──────────────── */
+    .acts { display: flex; gap: 4px; }
+    .btn {
+      flex: 1; padding: 9px 0;
+      border-radius: 2px;
+      font-family: inherit;
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 0.5px;
+      cursor: pointer; transition: all 0.08s;
+      text-transform: uppercase;
+    }
+    .btn-go {
+      background: linear-gradient(180deg, #333 0%, #252525 100%);
+      border: 1px solid #444;
+      border-bottom: 2px solid #1a1a1a;
+      color: var(--t1);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.06),
+        0 2px 4px rgba(0,0,0,0.4);
+    }
+    .btn-go:hover {
+      background: linear-gradient(180deg, #3a3a3a 0%, #2c2c2c 100%);
+      color: #ddd;
+    }
+    .btn-go:active {
+      background: linear-gradient(180deg, #222 0%, #282828 100%);
+      border-bottom-width: 1px; transform: translateY(1px);
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .btn-flat {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-bottom: 2px solid var(--surface);
+      color: var(--t3);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+    }
+    .btn-flat:hover { background: var(--raised); border-color: #303030; color: #555; }
+    .btn-flat:active {
+      background: #131313;
+      border-bottom-width: 1px; transform: translateY(1px);
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+    }
+    .btn-kill {
+      background: linear-gradient(180deg, #1e1e1e 0%, #191919 100%);
+      border: 1px solid rgba(160,64,64,0.25);
+      border-bottom: 2px solid var(--surface);
+      color: var(--rd);
+    }
+    .btn-kill:hover { color: #c05050; border-color: rgba(160,64,64,0.4); }
+    .btn-kill:active {
+      background: #151515;
+      border-bottom-width: 1px; transform: translateY(1px);
+    }
+    .btn-rec {
+      background: var(--rd-dim);
+      border: 1px solid rgba(160,64,64,0.2);
+      border-bottom: 2px solid var(--surface);
+      color: var(--rd);
+    }
+    .btn-rec:hover { border-color: rgba(160,64,64,0.35); color: #c05050; }
+    .btn-sq {
+      flex: none; width: 36px;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ── Library ──────────────────────────────── */
+    .lib-bar { display: flex; gap: 3px; margin-bottom: 8px; }
+    .lib-btn {
+      padding: 4px 8px;
+      background: #131313;
+      border: 1px solid var(--border2);
+      border-bottom: 2px solid var(--surface);
+      border-radius: 2px;
+      font-family: inherit;
+      font-size: 8px; font-weight: 700;
+      letter-spacing: 1px; text-transform: uppercase;
+      color: var(--t4); cursor: pointer;
+    }
+    .lib-btn.on {
+      background: #1a1a1a; border-color: #333;
+      color: var(--t2);
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+      border-bottom: 1px solid var(--surface);
+    }
+
+    .lib-hdr {
+      display: grid;
+      grid-template-columns: 18px 1fr 38px 56px 28px;
+      gap: 4px; padding: 0 6px 5px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .lh {
+      font-size: 7px; font-weight: 800;
+      letter-spacing: 1.5px; color: var(--t5);
+      text-transform: uppercase;
+    }
+    .lh.r { text-align: right; }
+    .lh.c { text-align: center; }
+
+    .lr {
+      display: grid;
+      grid-template-columns: 18px 1fr 38px 56px 28px;
+      gap: 4px; align-items: center;
+      padding: 6px; cursor: pointer;
+      transition: background 0.06s;
+    }
+    .lr:hover { background: #1a1a1a; }
+    .lr.sel { background: var(--ac-dim); }
+
+    .lr-n { font-size: 9px; color: #222; text-align: right; font-variant-numeric: tabular-nums; }
+    .lr.sel .lr-n { color: var(--t3); }
+    .lr-t {
+      font-size: 10px; font-weight: 500; color: var(--t3);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .lr.sel .lr-t { color: var(--t1); }
+    .lr-b {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px; color: var(--t4);
+      text-align: right; font-variant-numeric: tabular-nums;
+    }
+    .lr.sel .lr-b { color: var(--t2); }
+    .lr-k { font-size: 9px; font-weight: 600; color: var(--t4); text-align: center; }
+    .lr.sel .lr-k { color: var(--t2); }
+    .lr-c {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px; color: var(--t5); text-align: center;
+    }
+    .lr.sel .lr-c { color: var(--ac); }
+
+  </style>
+</head>
+<body>
+
+<!-- ═══ IDLE ══════════════════════════════════════════ -->
+<div class="col">
+  <span class="state-label">Idle</span>
+  <div class="panel">
+    <div class="hdr">
+      <div class="hdr-left">
+        <div class="hdr-mark">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <rect x="1" y="1" width="8" height="8" rx="1" stroke="#555" stroke-width="1.2" fill="none"/>
+            <rect x="3.5" y="3.5" width="3" height="3" rx="0.5" fill="#555"/>
+          </svg>
+        </div>
+        <span class="hdr-name">UnmixAudio</span>
+      </div>
+      <div class="hdr-right">
+        <button class="hdr-btn">☽</button>
+        <div class="badge">
+          <div class="badge-dot"></div>
+          <span class="badge-text">IDLE</span>
+        </div>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab on">Analyzer</button>
+      <button class="tab">Library</button>
+      <button class="tab">Stems</button>
+    </div>
+    <div class="body">
+      <div class="deck">
+        <div class="deck-in">
+          <div class="deck-top">
+            <span class="deck-lbl">No source</span>
+          </div>
+          <div class="bpm-row">
+            <div class="bpm-left"><div class="bpm-val idle">—</div></div>
+            <div class="bpm-right"><span class="bpm-tag">BPM</span></div>
+          </div>
+          <div class="vu">
+            <div class="vu-r">
+              <span class="vu-ch">L</span>
+              <div class="vu-segs"><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div></div>
+            </div>
+            <div class="vu-r">
+              <span class="vu-ch">R</span>
+              <div class="vu-segs"><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="kc">
+        <div class="kc-card">
+          <div class="kc-lbl">Key</div>
+          <div class="kc-v idle">—</div>
+        </div>
+        <div class="kc-card">
+          <div class="kc-lbl">Camelot</div>
+          <div class="cam-v idle">—</div>
+        </div>
+      </div>
+      <div class="div"></div>
+      <div class="acts">
+        <button class="btn btn-go">▶ START</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══ ANALYZING ════════════════════════════════════ -->
+<div class="col">
+  <span class="state-label">Analyzing</span>
+  <div class="panel">
+    <div class="hdr">
+      <div class="hdr-left">
+        <div class="hdr-mark">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <rect x="1" y="1" width="8" height="8" rx="1" stroke="#555" stroke-width="1.2" fill="none"/>
+            <rect x="3.5" y="3.5" width="3" height="3" rx="0.5" fill="#555"/>
+          </svg>
+        </div>
+        <span class="hdr-name">UnmixAudio</span>
+      </div>
+      <div class="hdr-right">
+        <button class="hdr-btn">☽</button>
+        <div class="badge live">
+          <div class="badge-dot"></div>
+          <span class="badge-text">LIVE</span>
+        </div>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab on">Analyzer</button>
+      <button class="tab">Library</button>
+      <button class="tab">Stems</button>
+    </div>
+    <div class="body">
+      <div class="np">
+        <div class="np-wave">
+          <div class="np-bar" style="height:5px"></div><div class="np-bar" style="height:12px"></div>
+          <div class="np-bar" style="height:8px"></div><div class="np-bar" style="height:15px"></div>
+          <div class="np-bar" style="height:6px"></div><div class="np-bar" style="height:14px"></div>
+          <div class="np-bar" style="height:10px"></div><div class="np-bar" style="height:16px"></div>
+          <div class="np-bar" style="height:7px"></div><div class="np-bar" style="height:11px"></div>
+        </div>
+        <div class="np-meta">
+          <div class="np-title">Tab · music.youtube.com</div>
+          <div class="np-src">Chrome tab capture</div>
+        </div>
+        <span class="np-dur">1:24</span>
+      </div>
+
+      <div class="deck">
+        <div class="deck-in">
+          <div class="deck-top">
+            <span class="deck-lbl">BPM Detection</span>
+            <span class="deck-info">18 chunks · 36s</span>
+          </div>
+          <div class="bpm-row">
+            <div class="bpm-left">
+              <div class="bpm-val">89</div>
+              <div class="bpm-dec">.0</div>
+            </div>
+            <div class="bpm-right">
+              <span class="bpm-tag">BPM</span>
+              <div class="bpm-sub"><span class="bpm-sub-arrow">↑</span><span class="bpm-sub-num">178</span></div>
+              <div class="bpm-sub"><span class="bpm-sub-arrow">↓</span><span class="bpm-sub-num">44</span></div>
+            </div>
+          </div>
+          <div class="vu">
+            <div class="vu-r">
+              <span class="vu-ch">L</span>
+              <div class="vu-segs">
+                <div class="s g"></div><div class="s g"></div><div class="s g"></div><div class="s g"></div>
+                <div class="s g"></div><div class="s g"></div><div class="s g"></div><div class="s g"></div>
+                <div class="s g"></div><div class="s g"></div><div class="s g"></div><div class="s g"></div>
+                <div class="s g"></div><div class="s g"></div>
+                <div class="s y"></div><div class="s y"></div><div class="s y"></div>
+                <div class="s r"></div>
+                <div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div>
+              </div>
+            </div>
+            <div class="vu-r">
+              <span class="vu-ch">R</span>
+              <div class="vu-segs">
+                <div class="s g"></div><div class="s g"></div><div class="s g"></div><div class="s g"></div>
+                <div class="s g"></div><div class="s g"></div><div class="s g"></div><div class="s g"></div>
+                <div class="s g"></div><div class="s g"></div><div class="s g"></div><div class="s g"></div>
+                <div class="s y"></div><div class="s y"></div><div class="s y"></div>
+                <div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div>
+                <div class="s"></div><div class="s"></div><div class="s"></div><div class="s"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="kc">
+        <div class="kc-card act">
+          <div class="kc-lbl">Key</div>
+          <div class="kc-v">A# Minor</div>
+          <div class="kc-s">Harmonic Minor</div>
+          <div class="conf">
+            <div class="conf-bar"><div class="conf-fill" style="width:74%"></div></div>
+            <span class="conf-pct">74%</span>
+          </div>
+        </div>
+        <div class="kc-card act">
+          <div class="kc-lbl">Camelot</div>
+          <div class="cam-v">3A</div>
+          <div class="kc-s">Bb / A# Minor</div>
+        </div>
+      </div>
+
+      <div class="whl-block">
+        <div class="blk-hdr">
+          <span class="blk-title">Camelot Wheel</span>
+          <div class="whl-leg">
+            <div class="whl-leg-i">
+              <div class="whl-dot" style="background:#555"></div><span>Major</span>
+            </div>
+            <div class="whl-leg-i">
+              <div class="whl-dot" style="background:var(--ac);opacity:0.5"></div><span>Minor</span>
+            </div>
+          </div>
+        </div>
+        <div class="whl-center">
+          <svg id="cw" width="210" height="210" viewBox="0 0 210 210"></svg>
+        </div>
+      </div>
+
+      <div class="scl-block">
+        <div class="scl-hdr">
+          <span class="blk-title">Scale Notes</span>
+          <span class="scl-mode">HARMONIC MINOR</span>
+        </div>
+        <div class="notes">
+          <div class="note root">A#</div>
+          <div class="note">C</div>
+          <div class="note on">C#</div>
+          <div class="note">D#</div>
+          <div class="note">F</div>
+          <div class="note on">F#</div>
+          <div class="note on">A</div>
+        </div>
+      </div>
+
+      <div class="compat">
+        <div class="scl-hdr" style="margin-bottom:6px">
+          <span class="blk-title">Compatible Keys</span>
+        </div>
+        <div class="compat-chips">
+          <div class="chip adj"><span class="chip-code">2A</span> D# Minor</div>
+          <div class="chip adj"><span class="chip-code">4A</span> F Minor</div>
+          <div class="chip"><span class="chip-code">3B</span> Db Major</div>
+        </div>
+      </div>
+
+      <div class="div"></div>
+      <div class="acts">
+        <button class="btn btn-flat">SAVE</button>
+        <button class="btn btn-kill">■ STOP</button>
+        <button class="btn btn-rec btn-sq">⏺</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══ LIBRARY ══════════════════════════════════════ -->
+<div class="col">
+  <span class="state-label">Library</span>
+  <div class="panel">
+    <div class="hdr">
+      <div class="hdr-left">
+        <div class="hdr-mark">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <rect x="1" y="1" width="8" height="8" rx="1" stroke="#555" stroke-width="1.2" fill="none"/>
+            <rect x="3.5" y="3.5" width="3" height="3" rx="0.5" fill="#555"/>
+          </svg>
+        </div>
+        <span class="hdr-name">UnmixAudio</span>
+      </div>
+      <div class="hdr-right">
+        <button class="hdr-btn">☽</button>
+        <div class="badge">
+          <div class="badge-dot"></div>
+          <span class="badge-text">IDLE</span>
+        </div>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab">Analyzer</button>
+      <button class="tab on">Library</button>
+      <button class="tab">Stems</button>
+    </div>
+    <div class="body">
+      <div class="lib-bar">
+        <button class="lib-btn on">Date ▾</button>
+        <button class="lib-btn">BPM</button>
+        <button class="lib-btn">Key</button>
+        <button class="lib-btn">Camelot</button>
+      </div>
+      <div class="lib-hdr">
+        <span class="lh r">#</span>
+        <span class="lh">Title</span>
+        <span class="lh r">BPM</span>
+        <span class="lh c">Key</span>
+        <span class="lh c">Cam</span>
+      </div>
+      <div class="lib-rows">
+        <div class="lr sel">
+          <span class="lr-n">1</span><span class="lr-t">Playboi Carti — Sky</span>
+          <span class="lr-b">89</span><span class="lr-k">A# Min</span><span class="lr-c">3A</span>
+        </div>
+        <div class="lr">
+          <span class="lr-n">2</span><span class="lr-t">Travis Scott — FEIN</span>
+          <span class="lr-b">140</span><span class="lr-k">F# Min</span><span class="lr-c">11A</span>
+        </div>
+        <div class="lr">
+          <span class="lr-n">3</span><span class="lr-t">Drake — God's Plan</span>
+          <span class="lr-b">77</span><span class="lr-k">Db Maj</span><span class="lr-c">3B</span>
+        </div>
+        <div class="lr">
+          <span class="lr-n">4</span><span class="lr-t">Future — WAIT FOR U</span>
+          <span class="lr-b">120</span><span class="lr-k">A Min</span><span class="lr-c">8A</span>
+        </div>
+        <div class="lr">
+          <span class="lr-n">5</span><span class="lr-t">Ken Carson — Paranoid</span>
+          <span class="lr-b">145</span><span class="lr-k">C# Min</span><span class="lr-c">12A</span>
+        </div>
+        <div class="lr">
+          <span class="lr-n">6</span><span class="lr-t">Yeat — Gët Busy</span>
+          <span class="lr-b">148</span><span class="lr-k">G Min</span><span class="lr-c">6A</span>
+        </div>
+        <div class="lr">
+          <span class="lr-n">7</span><span class="lr-t">Lil Uzi Vert — Just Wanna Rock</span>
+          <span class="lr-b">162</span><span class="lr-k">B Min</span><span class="lr-c">10A</span>
+        </div>
+        <div class="lr">
+          <span class="lr-n">8</span><span class="lr-t">Gunna — fukumean</span>
+          <span class="lr-b">96</span><span class="lr-k">C Min</span><span class="lr-c">5A</span>
+        </div>
+        <div class="lr">
+          <span class="lr-n">9</span><span class="lr-t">21 Savage — a lot</span>
+          <span class="lr-b">130</span><span class="lr-k">G# Min</span><span class="lr-c">1A</span>
+        </div>
+      </div>
+      <div class="div"></div>
+      <div class="acts">
+        <button class="btn btn-go">▶ START</button>
+        <button class="btn btn-flat btn-sq">🗑</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const svg = document.getElementById('cw');
+  if (!svg) return;
+  const NS = 'http://www.w3.org/2000/svg';
+  const CX = 105, CY = 105;
+  const BO = 100, BI = 74;
+  const AO = 70, AI = 44;
+  const ACT = {n:3,s:'A'};
+  const ADJ = [{n:2,s:'A'},{n:4,s:'A'},{n:3,s:'B'}];
+  const ORD = [12,1,2,3,4,5,6,7,8,9,10,11];
+  const AC = '#3fbfb0';
+
+  function xy(r,d) {
+    const rad=(d-90)*Math.PI/180;
+    return [CX+r*Math.cos(rad),CY+r*Math.sin(rad)];
+  }
+  function ap(ro,ri,d0,d1) {
+    const G=1.4,s=d0+G/2,e=d1-G/2;
+    const [x1,y1]=xy(ro,s),[x2,y2]=xy(ro,e),[x3,y3]=xy(ri,e),[x4,y4]=xy(ri,s);
+    return `M${x1},${y1} A${ro},${ro} 0 0 1 ${x2},${y2} L${x3},${y3} A${ri},${ri} 0 0 0 ${x4},${y4} Z`;
+  }
+
+  const bg=document.createElementNS(NS,'circle');
+  bg.setAttribute('cx',CX);bg.setAttribute('cy',CY);bg.setAttribute('r',AI-2);
+  bg.setAttribute('fill','#0a0a0a');svg.appendChild(bg);
+
+  ORD.forEach((num,i)=>{
+    const d0=i*30,d1=d0+30,mid=d0+15;
+    const isActB=ACT.n===num&&ACT.s==='B';
+    const isActA=ACT.n===num&&ACT.s==='A';
+    const isAdjB=ADJ.some(a=>a.n===num&&a.s==='B');
+    const isAdjA=ADJ.some(a=>a.n===num&&a.s==='A');
+
+    // B ring (Major) — neutral grays
+    const pB=document.createElementNS(NS,'path');
+    pB.setAttribute('d',ap(BO,BI,d0,d1));
+    pB.setAttribute('fill',isActB?'#666':isAdjB?'#252525':'#141414');
+    pB.setAttribute('stroke','#0a0a0a');pB.setAttribute('stroke-width','0.5');
+    svg.appendChild(pB);
+    const [bx,by]=xy((BO+BI)/2,mid);
+    const tB=document.createElementNS(NS,'text');
+    tB.setAttribute('x',bx);tB.setAttribute('y',by+4);
+    tB.setAttribute('text-anchor','middle');
+    tB.setAttribute('font-family','Share Tech Mono, monospace');
+    tB.setAttribute('font-size','11');
+    tB.setAttribute('fill',isActB?'#fff':isAdjB?'#555':'#222');
+    tB.textContent=`${num}B`;svg.appendChild(tB);
+
+    // A ring (Minor) — teal accent for active
+    const pA=document.createElementNS(NS,'path');
+    pA.setAttribute('d',ap(AO,AI,d0,d1));
+    if (isActA) {
+      pA.setAttribute('fill','#1a6b63');
+    } else if (isAdjA) {
+      pA.setAttribute('fill','rgba(63,191,176,0.08)');
+    } else {
+      pA.setAttribute('fill','#111');
+    }
+    pA.setAttribute('stroke','#0a0a0a');pA.setAttribute('stroke-width','0.5');
+    svg.appendChild(pA);
+    const [ax,ay]=xy((AO+AI)/2,mid);
+    const tA=document.createElementNS(NS,'text');
+    tA.setAttribute('x',ax);tA.setAttribute('y',ay+4);
+    tA.setAttribute('text-anchor','middle');
+    tA.setAttribute('font-family','Share Tech Mono, monospace');
+    tA.setAttribute('font-size','10');
+    tA.setAttribute('fill',isActA?'#d0ece9':isAdjA?'rgba(63,191,176,0.5)':'#1e1e1e');
+    tA.textContent=`${num}A`;svg.appendChild(tA);
+  });
+
+  const cc=document.createElementNS(NS,'text');
+  cc.setAttribute('x',CX);cc.setAttribute('y',CY-4);
+  cc.setAttribute('text-anchor','middle');
+  cc.setAttribute('font-family','Share Tech Mono, monospace');
+  cc.setAttribute('font-size','18');cc.setAttribute('fill',AC);
+  cc.textContent='3A';svg.appendChild(cc);
+
+  const cs=document.createElementNS(NS,'text');
+  cs.setAttribute('x',CX);cs.setAttribute('y',CY+12);
+  cs.setAttribute('text-anchor','middle');
+  cs.setAttribute('font-family','Inter, sans-serif');
+  cs.setAttribute('font-size','8');cs.setAttribute('fill','#333');
+  cs.textContent='A# Minor';svg.appendChild(cs);
+})();
+</script>
+</body>
+</html>

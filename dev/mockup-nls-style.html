@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>UnmixAudio — NLS Style Mockup</title>
+  <style>
+    /* ══════════════════════════════════════════════════════════════
+       UnmixAudio — Analog Console Mockup (NLS Channel Style)
+       This is a VISUAL MOCKUP only. No JS logic.
+    ══════════════════════════════════════════════════════════════ */
+
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: #1a1a1a;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+
+    /* ── Main Panel ──────────────────────────────────────────── */
+
+    .panel {
+      width: 380px;
+      background:
+        /* brushed metal noise */
+        repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 1px,
+          rgba(255,255,255,0.008) 1px,
+          rgba(255,255,255,0.008) 2px
+        ),
+        /* base metal gradient */
+        linear-gradient(
+          180deg,
+          #3a3d42 0%,
+          #2e3136 15%,
+          #33363b 30%,
+          #2a2d31 50%,
+          #2e3136 70%,
+          #33363b 85%,
+          #2a2d31 100%
+        );
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow:
+        0 20px 60px rgba(0,0,0,0.6),
+        0 2px 4px rgba(0,0,0,0.4),
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        inset 0 -1px 0 rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.06);
+      position: relative;
+    }
+
+    /* ── Top Screws ──────────────────────────────────────────── */
+
+    .screw {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 35% 35%, #555, #2a2a2a);
+      box-shadow:
+        inset 0 1px 2px rgba(0,0,0,0.6),
+        0 1px 1px rgba(255,255,255,0.05);
+    }
+    .screw::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 20%;
+      right: 20%;
+      height: 1px;
+      background: rgba(0,0,0,0.5);
+      transform: rotate(45deg);
+    }
+    .screw.tl { top: 10px; left: 10px; }
+    .screw.tr { top: 10px; right: 10px; }
+    .screw.bl { bottom: 10px; left: 10px; }
+    .screw.br { bottom: 10px; right: 10px; }
+
+    /* ── Header Label ────────────────────────────────────────── */
+
+    .header-label {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .brand-text {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 6px;
+      text-transform: uppercase;
+      color: #8a8d92;
+      text-shadow:
+        0 -1px 0 rgba(0,0,0,0.5),
+        0 1px 0 rgba(255,255,255,0.06);
+    }
+
+    .brand-sub {
+      font-size: 9px;
+      letter-spacing: 3px;
+      color: #5a5d62;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    /* ── Tab Selector (SPIKE/MIKE/NEVO style) ────────────────── */
+
+    .tab-selector {
+      display: flex;
+      gap: 0;
+      margin-bottom: 16px;
+      background: #1e2024;
+      border-radius: 4px;
+      padding: 3px;
+      box-shadow:
+        inset 0 2px 4px rgba(0,0,0,0.5),
+        0 1px 0 rgba(255,255,255,0.04);
+    }
+
+    .tab-item {
+      flex: 1;
+      padding: 7px 0;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #5a5d62;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: all 0.2s;
+      border: 1px solid transparent;
+    }
+
+    .tab-item:hover {
+      color: #8a8d92;
+    }
+
+    .tab-item.active {
+      background: linear-gradient(180deg, #45484d, #3a3d42);
+      color: #d4d7dc;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow:
+        0 2px 4px rgba(0,0,0,0.3),
+        inset 0 1px 0 rgba(255,255,255,0.06);
+      text-shadow: 0 0 8px rgba(255,255,255,0.15);
+    }
+
+    /* ── VU Meter ────────────────────────────────────────────── */
+
+    .vu-section {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .vu-meter {
+      flex: 1;
+      background:
+        linear-gradient(180deg, #e8dcc8, #d4c8a8, #c8bc9c);
+      border-radius: 6px;
+      padding: 10px 8px 6px;
+      box-shadow:
+        inset 0 2px 6px rgba(0,0,0,0.25),
+        0 1px 0 rgba(255,255,255,0.06);
+      border: 2px solid #1e1e1e;
+      position: relative;
+      overflow: hidden;
+      height: 110px;
+    }
+
+    .vu-meter::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background:
+        linear-gradient(180deg,
+          rgba(255,255,255,0.3) 0%,
+          transparent 40%,
+          transparent 60%,
+          rgba(0,0,0,0.08) 100%
+        );
+      pointer-events: none;
+      border-radius: 4px;
+    }
+
+    .vu-label {
+      text-align: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: #3a3530;
+      letter-spacing: 2px;
+      margin-bottom: 4px;
+    }
+
+    .vu-scale {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 4px;
+      margin-bottom: 2px;
+    }
+
+    .vu-scale span {
+      font-size: 7px;
+      font-weight: 600;
+      color: #5a5550;
+    }
+
+    .vu-scale span.red {
+      color: #c0392b;
+    }
+
+    .vu-needle-area {
+      position: relative;
+      height: 50px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .vu-needle {
+      width: 2px;
+      height: 46px;
+      background: linear-gradient(0deg, #1a1a1a, #c0392b 70%, #c0392b);
+      transform-origin: bottom center;
+      transform: rotate(-20deg);
+      border-radius: 1px 1px 0 0;
+      position: absolute;
+      bottom: 0;
+      transition: transform 1s cubic-bezier(0.2, 0.8, 0.3, 1);
+    }
+
+    .vu-needle.active {
+      transform: rotate(15deg);
+    }
+
+    .vu-needle-pivot {
+      width: 8px;
+      height: 8px;
+      background: radial-gradient(circle, #2a2a2a, #1a1a1a);
+      border-radius: 50%;
+      position: absolute;
+      bottom: -4px;
+      box-shadow: 0 0 3px rgba(0,0,0,0.4);
+    }
+
+    .vu-type {
+      text-align: center;
+      font-size: 8px;
+      font-weight: 700;
+      color: #3a3530;
+      letter-spacing: 2px;
+      margin-top: 4px;
+      text-transform: uppercase;
+    }
+
+    .vu-arc {
+      position: absolute;
+      top: 20px;
+      left: 10%;
+      right: 10%;
+      height: 40px;
+      border-bottom: 1.5px solid rgba(60,55,50,0.3);
+      border-radius: 0 0 50% 50%;
+    }
+
+    /* ── Metric Display (Digital LCD) ────────────────────────── */
+
+    .metrics-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .metric-display {
+      flex: 1;
+      background: #0a0a0c;
+      border-radius: 4px;
+      padding: 12px 10px;
+      text-align: center;
+      box-shadow:
+        inset 0 2px 6px rgba(0,0,0,0.6),
+        inset 0 0 20px rgba(0,0,0,0.3),
+        0 1px 0 rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.03);
+      position: relative;
+    }
+
+    .metric-display::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 40%;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+      border-radius: 4px 4px 0 0;
+      pointer-events: none;
+    }
+
+    .metric-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: #4a4d52;
+      margin-bottom: 6px;
+    }
+
+    .metric-value {
+      font-size: 42px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -2px;
+      line-height: 1;
+    }
+
+    .metric-value.bpm-glow {
+      color: #ff6b4a;
+      text-shadow:
+        0 0 10px rgba(255,107,74,0.4),
+        0 0 30px rgba(255,107,74,0.15),
+        0 0 60px rgba(255,107,74,0.05);
+      animation: bpmPulseGlow 0.46875s ease-in-out infinite;
+    }
+
+    @keyframes bpmPulseGlow {
+      0%, 100% {
+        text-shadow:
+          0 0 10px rgba(255,107,74,0.4),
+          0 0 30px rgba(255,107,74,0.15);
+      }
+      50% {
+        text-shadow:
+          0 0 15px rgba(255,107,74,0.6),
+          0 0 40px rgba(255,107,74,0.25),
+          0 0 80px rgba(255,107,74,0.1);
+      }
+    }
+
+    .metric-value.key-glow {
+      font-size: 28px;
+      letter-spacing: 1px;
+      color: #4ae0ff;
+      text-shadow:
+        0 0 10px rgba(74,224,255,0.4),
+        0 0 30px rgba(74,224,255,0.15);
+    }
+
+    .metric-unit {
+      font-size: 9px;
+      color: #3a3d42;
+      margin-top: 4px;
+      letter-spacing: 1px;
+    }
+
+    .metric-alt {
+      font-size: 9px;
+      color: #3a3d42;
+      margin-top: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .key-secondary {
+      font-size: 11px;
+      color: rgba(74,224,255,0.4);
+      margin-top: 4px;
+    }
+
+    /* ── Knob ────────────────────────────────────────────────── */
+
+    .controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 30px;
+      margin-bottom: 16px;
+      padding: 12px 0;
+    }
+
+    .knob-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .knob {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background:
+        conic-gradient(
+          from 220deg,
+          #555 0deg,
+          #3a3a3a 60deg,
+          #4a4a4a 120deg,
+          #333 180deg,
+          #444 240deg,
+          #3a3a3a 300deg,
+          #555 360deg
+        );
+      box-shadow:
+        0 4px 8px rgba(0,0,0,0.5),
+        0 1px 2px rgba(0,0,0,0.3),
+        inset 0 1px 1px rgba(255,255,255,0.1);
+      position: relative;
+      cursor: pointer;
+    }
+
+    .knob::before {
+      content: '';
+      position: absolute;
+      top: 6px; left: 6px; right: 6px; bottom: 6px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 40% 35%,
+          #5a5a5a,
+          #3a3a3a 50%,
+          #2a2a2a
+        );
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.4);
+    }
+
+    .knob-pointer {
+      position: absolute;
+      top: 6px;
+      left: 50%;
+      width: 2px;
+      height: 16px;
+      background: #fff;
+      transform: translateX(-50%) rotate(var(--knob-angle, -120deg));
+      transform-origin: bottom center;
+      border-radius: 1px;
+      z-index: 2;
+      top: 8px;
+      box-shadow: 0 0 4px rgba(255,255,255,0.3);
+    }
+
+    .knob-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #6a6d72;
+      text-shadow: 0 -1px 0 rgba(0,0,0,0.4);
+    }
+
+    .knob-ticks {
+      position: absolute;
+      top: -4px; left: -4px; right: -4px; bottom: -4px;
+    }
+
+    /* ── Status LED Row ──────────────────────────────────────── */
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.15);
+      border-radius: 4px;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+    }
+
+    .led {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      border: 1px solid rgba(0,0,0,0.3);
+    }
+
+    .led.off {
+      background: radial-gradient(circle at 40% 35%, #3a3a3a, #1a1a1a);
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.4);
+    }
+
+    .led.green {
+      background: radial-gradient(circle at 40% 35%, #6fff6f, #00cc00);
+      box-shadow:
+        0 0 6px rgba(0,204,0,0.6),
+        0 0 15px rgba(0,204,0,0.3),
+        inset 0 1px 1px rgba(255,255,255,0.3);
+      animation: ledPulse 2s ease-in-out infinite;
+    }
+
+    .led.red {
+      background: radial-gradient(circle at 40% 35%, #ff6f6f, #cc0000);
+      box-shadow:
+        0 0 6px rgba(204,0,0,0.6),
+        0 0 15px rgba(204,0,0,0.3),
+        inset 0 1px 1px rgba(255,255,255,0.3);
+    }
+
+    @keyframes ledPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    .status-text {
+      font-size: 11px;
+      color: #7a7d82;
+      flex: 1;
+    }
+
+    .status-timer {
+      font-size: 10px;
+      color: #4a4d52;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 1px;
+    }
+
+    /* ── Hardware Buttons ────────────────────────────────────── */
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .hw-btn {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.15s;
+    }
+
+    .hw-btn-primary {
+      background:
+        linear-gradient(180deg, #4a4d52, #3a3d42 50%, #33363b);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #c8ccd2;
+      box-shadow:
+        0 2px 6px rgba(0,0,0,0.4),
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        inset 0 -1px 0 rgba(0,0,0,0.2);
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+
+    .hw-btn-primary:hover {
+      background:
+        linear-gradient(180deg, #555860, #44474c 50%, #3a3d42);
+      color: #e0e4ea;
+    }
+
+    .hw-btn-primary:active {
+      background:
+        linear-gradient(180deg, #33363b, #3a3d42 50%, #4a4d52);
+      box-shadow:
+        0 1px 2px rgba(0,0,0,0.4),
+        inset 0 2px 4px rgba(0,0,0,0.3);
+      transform: translateY(1px);
+    }
+
+    .hw-btn-danger {
+      background:
+        linear-gradient(180deg, #5a2020, #4a1818 50%, #3a1010);
+      border: 1px solid rgba(255,80,80,0.15);
+      color: #ff8a80;
+      box-shadow:
+        0 2px 6px rgba(0,0,0,0.4),
+        0 0 15px rgba(255,80,80,0.05),
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        inset 0 -1px 0 rgba(0,0,0,0.2);
+      text-shadow: 0 0 10px rgba(255,80,80,0.3);
+    }
+
+    .hw-btn-danger:hover {
+      background:
+        linear-gradient(180deg, #6a2828, #5a2020 50%, #4a1818);
+      color: #ff9a90;
+    }
+
+    .hw-btn-save {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #6a6d72;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .hw-btn-save:hover {
+      border-color: rgba(255,255,255,0.18);
+      color: #9a9da2;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .btn-led {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #333;
+      flex-shrink: 0;
+    }
+
+    .btn-led.on {
+      background: radial-gradient(circle, #6fff6f, #00aa00);
+      box-shadow: 0 0 6px rgba(0,204,0,0.5);
+    }
+
+    .btn-led.on-red {
+      background: radial-gradient(circle, #ff6f6f, #cc0000);
+      box-shadow: 0 0 6px rgba(204,0,0,0.5);
+    }
+
+    /* ── Fader (Output Slider) ───────────────────────────────── */
+
+    .fader-section {
+      position: absolute;
+      right: 20px;
+      top: 220px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .fader-track {
+      width: 8px;
+      height: 120px;
+      background: #1a1a1a;
+      border-radius: 4px;
+      box-shadow:
+        inset 0 2px 4px rgba(0,0,0,0.6),
+        0 1px 0 rgba(255,255,255,0.04);
+      position: relative;
+    }
+
+    .fader-fill {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 60%;
+      background: linear-gradient(0deg, rgba(255,107,74,0.3), rgba(255,107,74,0.05));
+      border-radius: 0 0 4px 4px;
+    }
+
+    .fader-thumb {
+      width: 22px;
+      height: 14px;
+      background:
+        linear-gradient(180deg,
+          #666 0%,
+          #555 20%,
+          #444 40%,
+          #555 60%,
+          #444 80%,
+          #555 100%
+        );
+      border-radius: 2px;
+      position: absolute;
+      left: 50%;
+      top: 35%;
+      transform: translateX(-50%);
+      box-shadow:
+        0 2px 4px rgba(0,0,0,0.5),
+        inset 0 1px 0 rgba(255,255,255,0.15);
+      cursor: pointer;
+    }
+
+    .fader-thumb::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 3px;
+      right: 3px;
+      height: 1px;
+      background: rgba(255,255,255,0.2);
+    }
+
+    .fader-label {
+      font-size: 8px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      color: #4a4d52;
+      text-transform: uppercase;
+    }
+
+    /* ── Separator Line ──────────────────────────────────────── */
+
+    .separator {
+      height: 1px;
+      background: linear-gradient(90deg,
+        transparent,
+        rgba(255,255,255,0.06) 20%,
+        rgba(255,255,255,0.06) 80%,
+        transparent
+      );
+      margin: 14px 0;
+    }
+
+    /* ── BPM Alternatives ────────────────────────────────────── */
+
+    .bpm-alts {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 6px;
+    }
+
+    .bpm-alt-item {
+      font-size: 9px;
+      color: #3a3d42;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Library Item (Hardware style) ────────────────────────── */
+
+    .library-section {
+      margin-top: 16px;
+      display: none;
+    }
+
+    .library-section.visible {
+      display: block;
+    }
+
+    .library-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: rgba(0,0,0,0.15);
+      border-radius: 4px;
+      margin-bottom: 6px;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+      cursor: pointer;
+      transition: background 0.15s;
+      border: 1px solid transparent;
+    }
+
+    .library-item:hover {
+      background: rgba(0,0,0,0.25);
+      border-color: rgba(255,255,255,0.05);
+    }
+
+    .lib-thumb {
+      width: 44px;
+      height: 32px;
+      border-radius: 3px;
+      background: #1a1a1a;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .lib-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .lib-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .lib-title {
+      font-size: 11px;
+      font-weight: 500;
+      color: #9a9da2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .lib-meta {
+      font-size: 9px;
+      color: #4a4d52;
+      margin-top: 2px;
+      letter-spacing: 0.5px;
+    }
+
+    .lib-meta .bpm-tag {
+      color: rgba(255,107,74,0.6);
+    }
+
+    .lib-meta .key-tag {
+      color: rgba(74,224,255,0.5);
+    }
+
+    .lib-delete {
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 3px;
+      color: #3a3d42;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .lib-delete:hover {
+      color: #ff6f6f;
+      border-color: rgba(255,80,80,0.15);
+      background: rgba(255,80,80,0.05);
+    }
+
+    .library-empty {
+      text-align: center;
+      color: #3a3d42;
+      font-size: 11px;
+      padding: 32px 0;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Embossed Divider Text ────────────────────────────────── */
+
+    .section-label {
+      text-align: center;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #4a4d52;
+      margin-bottom: 12px;
+      text-shadow:
+        0 -1px 0 rgba(0,0,0,0.4),
+        0 1px 0 rgba(255,255,255,0.04);
+    }
+
+    /* ── Demo State Labels ───────────────────────────────────── */
+
+    .demo-label {
+      text-align: center;
+      font-size: 10px;
+      color: #555;
+      margin-top: 24px;
+      letter-spacing: 1px;
+      font-style: italic;
+    }
+
+    .demo-states {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 32px;
+    }
+
+    .demo-btn {
+      padding: 6px 14px;
+      font-size: 10px;
+      font-family: inherit;
+      font-weight: 600;
+      letter-spacing: 1px;
+      background: #2a2d32;
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #7a7d82;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .demo-btn:hover {
+      background: #33363b;
+      color: #aaa;
+    }
+
+    .demo-btn.active-demo {
+      background: #3a3d42;
+      color: #ddd;
+      border-color: rgba(255,255,255,0.15);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══ IDLE STATE ═══════════════════════════════════════ -->
+  <div style="display: flex; gap: 40px; flex-wrap: wrap; justify-content: center; padding: 40px;">
+
+    <!-- Panel: IDLE State -->
+    <div>
+      <div class="demo-label">IDLE STATE</div>
+      <div style="height: 12px;"></div>
+      <div class="panel">
+        <div class="screw tl"></div>
+        <div class="screw tr"></div>
+        <div class="screw bl"></div>
+        <div class="screw br"></div>
+
+        <div class="header-label">
+          <div class="brand-text">UnmixAudio</div>
+          <div class="brand-sub">BPM & Key Analyzer</div>
+        </div>
+
+        <div class="tab-selector">
+          <div class="tab-item active">Analyzer</div>
+          <div class="tab-item">Library</div>
+          <div class="tab-item">Stems</div>
+        </div>
+
+        <div class="section-label">Meter</div>
+
+        <div class="vu-section">
+          <div class="vu-meter">
+            <div class="vu-label">VU</div>
+            <div class="vu-scale">
+              <span>-20</span>
+              <span>-10</span>
+              <span>-5</span>
+              <span>0</span>
+              <span class="red">+3</span>
+            </div>
+            <div class="vu-arc"></div>
+            <div class="vu-needle-area">
+              <div class="vu-needle"></div>
+              <div class="vu-needle-pivot"></div>
+            </div>
+            <div class="vu-type">L</div>
+          </div>
+          <div class="vu-meter">
+            <div class="vu-label">VU</div>
+            <div class="vu-scale">
+              <span>-20</span>
+              <span>-10</span>
+              <span>-5</span>
+              <span>0</span>
+              <span class="red">+3</span>
+            </div>
+            <div class="vu-arc"></div>
+            <div class="vu-needle-area">
+              <div class="vu-needle"></div>
+              <div class="vu-needle-pivot"></div>
+            </div>
+            <div class="vu-type">R</div>
+          </div>
+        </div>
+
+        <div class="separator"></div>
+
+        <div class="metrics-row">
+          <div class="metric-display">
+            <div class="metric-label">BPM</div>
+            <div class="metric-value" style="color: #3a3d42;">---</div>
+            <div class="metric-unit">beats / min</div>
+          </div>
+          <div class="metric-display">
+            <div class="metric-label">Key</div>
+            <div class="metric-value" style="color: #3a3d42; font-size: 28px;">---</div>
+            <div class="key-secondary">&nbsp;</div>
+          </div>
+        </div>
+
+        <div class="status-row">
+          <div class="led off"></div>
+          <span class="status-text">Idle</span>
+        </div>
+
+        <div class="actions">
+          <button class="hw-btn hw-btn-primary">
+            <span class="btn-led"></span>
+            Start Analysis
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel: ANALYZING State -->
+    <div>
+      <div class="demo-label">ANALYZING STATE</div>
+      <div style="height: 12px;"></div>
+      <div class="panel">
+        <div class="screw tl"></div>
+        <div class="screw tr"></div>
+        <div class="screw bl"></div>
+        <div class="screw br"></div>
+
+        <div class="header-label">
+          <div class="brand-text">UnmixAudio</div>
+          <div class="brand-sub">BPM & Key Analyzer</div>
+        </div>
+
+        <div class="tab-selector">
+          <div class="tab-item active">Analyzer</div>
+          <div class="tab-item">Library</div>
+          <div class="tab-item">Stems</div>
+        </div>
+
+        <div class="section-label">Meter</div>
+
+        <div class="vu-section">
+          <div class="vu-meter">
+            <div class="vu-label">VU</div>
+            <div class="vu-scale">
+              <span>-20</span>
+              <span>-10</span>
+              <span>-5</span>
+              <span>0</span>
+              <span class="red">+3</span>
+            </div>
+            <div class="vu-arc"></div>
+            <div class="vu-needle-area">
+              <div class="vu-needle active"></div>
+              <div class="vu-needle-pivot"></div>
+            </div>
+            <div class="vu-type">L</div>
+          </div>
+          <div class="vu-meter">
+            <div class="vu-label">VU</div>
+            <div class="vu-scale">
+              <span>-20</span>
+              <span>-10</span>
+              <span>-5</span>
+              <span>0</span>
+              <span class="red">+3</span>
+            </div>
+            <div class="vu-arc"></div>
+            <div class="vu-needle-area">
+              <div class="vu-needle" style="transform: rotate(10deg);"></div>
+              <div class="vu-needle-pivot"></div>
+            </div>
+            <div class="vu-type">R</div>
+          </div>
+        </div>
+
+        <div class="separator"></div>
+
+        <div class="metrics-row">
+          <div class="metric-display">
+            <div class="metric-label">BPM</div>
+            <div class="metric-value bpm-glow">128</div>
+            <div class="metric-unit">beats / min</div>
+            <div class="bpm-alts">
+              <span class="bpm-alt-item">&darr; 64</span>
+              <span class="bpm-alt-item">&uarr; 256</span>
+            </div>
+          </div>
+          <div class="metric-display">
+            <div class="metric-label">Key</div>
+            <div class="metric-value key-glow">Am</div>
+            <div class="key-secondary">C Major</div>
+          </div>
+        </div>
+
+        <div class="status-row">
+          <div class="led green"></div>
+          <span class="status-text" style="color: #9a9da2;">Analyzing...</span>
+          <span class="status-timer">0:42</span>
+        </div>
+
+        <div class="actions">
+          <button class="hw-btn hw-btn-save">
+            <span class="btn-led"></span>
+            Save to Library
+          </button>
+          <button class="hw-btn hw-btn-danger">
+            <span class="btn-led on-red"></span>
+            Stop
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel: LIBRARY View -->
+    <div>
+      <div class="demo-label">LIBRARY VIEW</div>
+      <div style="height: 12px;"></div>
+      <div class="panel">
+        <div class="screw tl"></div>
+        <div class="screw tr"></div>
+        <div class="screw bl"></div>
+        <div class="screw br"></div>
+
+        <div class="header-label">
+          <div class="brand-text">UnmixAudio</div>
+          <div class="brand-sub">BPM & Key Analyzer</div>
+        </div>
+
+        <div class="tab-selector">
+          <div class="tab-item">Analyzer</div>
+          <div class="tab-item active">Library</div>
+          <div class="tab-item">Stems</div>
+        </div>
+
+        <div class="section-label">Saved Tracks</div>
+
+        <div class="library-section visible">
+          <div class="library-item">
+            <div class="lib-thumb">
+              <div style="width:100%;height:100%;background:linear-gradient(135deg,#2a1a3a,#1a2a3a);"></div>
+            </div>
+            <div class="lib-info">
+              <div class="lib-title">Metro Boomin - Superhero</div>
+              <div class="lib-meta">
+                <span class="bpm-tag">142 BPM</span> &middot; <span class="key-tag">F# Minor</span>
+              </div>
+            </div>
+            <button class="lib-delete">&times;</button>
+          </div>
+          <div class="library-item">
+            <div class="lib-thumb">
+              <div style="width:100%;height:100%;background:linear-gradient(135deg,#3a2a1a,#2a1a2a);"></div>
+            </div>
+            <div class="lib-info">
+              <div class="lib-title">Travis Scott - FE!N ft. Playboi Carti</div>
+              <div class="lib-meta">
+                <span class="bpm-tag">148 BPM</span> &middot; <span class="key-tag">E Minor</span>
+              </div>
+            </div>
+            <button class="lib-delete">&times;</button>
+          </div>
+          <div class="library-item">
+            <div class="lib-thumb">
+              <div style="width:100%;height:100%;background:linear-gradient(135deg,#1a3a2a,#2a2a1a);"></div>
+            </div>
+            <div class="lib-info">
+              <div class="lib-title">Drake - Rich Flex ft. 21 Savage</div>
+              <div class="lib-meta">
+                <span class="bpm-tag">80 BPM</span> &middot; <span class="key-tag">C Minor</span>
+              </div>
+            </div>
+            <button class="lib-delete">&times;</button>
+          </div>
+          <div class="library-item">
+            <div class="lib-thumb">
+              <div style="width:100%;height:100%;background:linear-gradient(135deg,#2a2a3a,#1a1a2a);"></div>
+            </div>
+            <div class="lib-info">
+              <div class="lib-title">Gunna - fukumean</div>
+              <div class="lib-meta">
+                <span class="bpm-tag">132 BPM</span> &middot; <span class="key-tag">A Minor</span>
+              </div>
+            </div>
+            <button class="lib-delete">&times;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

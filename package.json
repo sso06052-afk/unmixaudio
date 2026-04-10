@@ -1,0 +1,20 @@
+{
+  "name": "audio-analyzer-extension",
+  "version": "1.0.0",
+  "description": "",
+  "main": "audio-worklet-processor.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "essentia.js": "^0.1.3"
+  }
+}

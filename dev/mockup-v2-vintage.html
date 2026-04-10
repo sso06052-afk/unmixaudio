@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>UnmixAudio — Vintage Plugin Mockup v2</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      background: #111;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      padding: 40px 20px;
+    }
+
+    .mockup-row {
+      display: flex;
+      gap: 48px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .state-label {
+      text-align: center;
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #444;
+      margin-bottom: 16px;
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       PANEL — The plugin chassis
+    ══════════════════════════════════════════════════════════ */
+
+    .plugin {
+      width: 360px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow:
+        0 24px 80px rgba(0,0,0,0.7),
+        0 4px 12px rgba(0,0,0,0.5),
+        inset 0 1px 0 rgba(255,255,255,0.04);
+      border: 1px solid #252525;
+    }
+
+    /* ── Top Bar (plugin title bar) ─────────────────────────── */
+
+    .plugin-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: #141414;
+      border-bottom: 1px solid #222;
+    }
+
+    .plugin-logo {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #555;
+    }
+
+    .plugin-version {
+      font-size: 9px;
+      color: #333;
+      letter-spacing: 1px;
+    }
+
+    /* ── Tab Bar ─────────────────────────────────────────────── */
+
+    .tab-bar {
+      display: flex;
+      background: #141414;
+      border-bottom: 1px solid #222;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 9px 0;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #3a3a3a;
+      cursor: pointer;
+      transition: color 0.2s;
+      position: relative;
+    }
+
+    .tab:hover {
+      color: #666;
+    }
+
+    .tab.active {
+      color: #aaa;
+    }
+
+    .tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 20%;
+      right: 20%;
+      height: 1px;
+      background: #666;
+    }
+
+    /* ── Panel Body ──────────────────────────────────────────── */
+
+    .panel-body {
+      padding: 20px 18px;
+    }
+
+    /* ── Meter Section (simplified VU) ───────────────────────── */
+
+    .meter-section {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .meter {
+      flex: 1;
+      height: 6px;
+      background: #111;
+      border-radius: 3px;
+      overflow: hidden;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
+      position: relative;
+    }
+
+    .meter-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    .meter-fill.idle {
+      width: 0%;
+      background: #333;
+    }
+
+    .meter-fill.active {
+      width: 72%;
+      background: linear-gradient(90deg, #333, #666, #888);
+    }
+
+    .meter-fill.active-r {
+      width: 65%;
+      background: linear-gradient(90deg, #333, #666, #888);
+    }
+
+    .meter-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+    }
+
+    .meter-label {
+      font-size: 8px;
+      color: #2a2a2a;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Divider ─────────────────────────────────────────────── */
+
+    .divider {
+      height: 1px;
+      background: #222;
+      margin: 16px 0;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.02);
+    }
+
+    /* ── Metric Cards ────────────────────────────────────────── */
+
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .metric-card {
+      background: #111;
+      border: 1px solid #1e1e1e;
+      border-radius: 6px;
+      padding: 16px 12px;
+      text-align: center;
+      position: relative;
+      box-shadow:
+        inset 0 2px 6px rgba(0,0,0,0.4),
+        0 1px 0 rgba(255,255,255,0.02);
+      transition: border-color 0.3s;
+    }
+
+    .metric-card.active {
+      border-color: #333;
+    }
+
+    .metric-card.active.pulse {
+      animation: cardPulse var(--beat, 0.47s) ease-in-out infinite;
+    }
+
+    @keyframes cardPulse {
+      0%, 100% { border-color: #333; }
+      50% { border-color: #555; box-shadow: inset 0 2px 6px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.03); }
+    }
+
+    .metric-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: #383838;
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+
+    .metric-value.bpm {
+      font-size: 46px;
+      font-weight: 800;
+      letter-spacing: -2px;
+    }
+
+    .metric-value.bpm.idle {
+      color: #2a2a2a;
+    }
+
+    .metric-value.bpm.on {
+      color: #d0d0d0;
+      text-shadow: 0 0 20px rgba(200,200,200,0.08);
+    }
+
+    .metric-value.key {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .metric-value.key.idle {
+      color: #2a2a2a;
+    }
+
+    .metric-value.key.on {
+      color: #c0c0c0;
+      text-shadow: 0 0 15px rgba(200,200,200,0.06);
+    }
+
+    .metric-sub {
+      font-size: 9px;
+      color: #2a2a2a;
+      margin-top: 6px;
+      letter-spacing: 0.5px;
+      min-height: 12px;
+    }
+
+    .metric-sub.on {
+      color: #444;
+    }
+
+    .metric-alts {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .metric-alts span {
+      font-size: 9px;
+      color: #333;
+      letter-spacing: 0.3px;
+    }
+
+    .metric-secondary {
+      font-size: 11px;
+      color: #444;
+      margin-top: 6px;
+      min-height: 14px;
+    }
+
+    /* ── Status ──────────────────────────────────────────────── */
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding: 0 2px;
+    }
+
+    .status-led {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-led.off {
+      background: #282828;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.4);
+    }
+
+    .status-led.live {
+      background: radial-gradient(circle at 40% 35%, #eee, #999);
+      box-shadow: 0 0 6px rgba(200,200,200,0.3);
+      animation: ledBreathe 2s ease-in-out infinite;
+    }
+
+    @keyframes ledBreathe {
+      0%, 100% { opacity: 1; box-shadow: 0 0 6px rgba(200,200,200,0.3); }
+      50% { opacity: 0.6; box-shadow: 0 0 3px rgba(200,200,200,0.15); }
+    }
+
+    .status-led.err {
+      background: radial-gradient(circle at 40% 35%, #ccc, #777);
+      box-shadow: 0 0 4px rgba(150,150,150,0.2);
+    }
+
+    .status-text {
+      font-size: 11px;
+      color: #444;
+    }
+
+    .status-text.on {
+      color: #777;
+    }
+
+    .status-timer {
+      margin-left: auto;
+      font-size: 10px;
+      color: #333;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Buttons ─────────────────────────────────────────────── */
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 11px 16px;
+      border-radius: 5px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-start {
+      background: linear-gradient(180deg, #2a2a2a, #222);
+      border: 1px solid #333;
+      color: #999;
+      box-shadow:
+        0 2px 6px rgba(0,0,0,0.3),
+        inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+
+    .btn-start:hover {
+      background: linear-gradient(180deg, #333, #2a2a2a);
+      color: #bbb;
+      border-color: #444;
+    }
+
+    .btn-start:active {
+      background: linear-gradient(180deg, #1e1e1e, #252525);
+      box-shadow:
+        0 1px 2px rgba(0,0,0,0.3),
+        inset 0 2px 4px rgba(0,0,0,0.2);
+      transform: translateY(1px);
+    }
+
+    .btn-stop {
+      background: linear-gradient(180deg, #252525, #1e1e1e);
+      border: 1px solid #3a3a3a;
+      color: #888;
+      box-shadow:
+        0 2px 6px rgba(0,0,0,0.3),
+        inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+
+    .btn-stop:hover {
+      color: #aaa;
+      border-color: #444;
+    }
+
+    .btn-save {
+      background: transparent;
+      border: 1px solid #282828;
+      color: #444;
+    }
+
+    .btn-save:hover {
+      border-color: #3a3a3a;
+      color: #666;
+      background: rgba(255,255,255,0.01);
+    }
+
+    .btn-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #282828;
+    }
+
+    .btn-dot.on {
+      background: #888;
+      box-shadow: 0 0 4px rgba(150,150,150,0.3);
+    }
+
+    /* ── Knob (decorative) ───────────────────────────────────── */
+
+    .knob-row {
+      display: flex;
+      justify-content: center;
+      gap: 36px;
+      margin-bottom: 16px;
+    }
+
+    .knob-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .knob {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 45% 40%,
+          #3a3a3a,
+          #2a2a2a 50%,
+          #1e1e1e
+        );
+      box-shadow:
+        0 3px 8px rgba(0,0,0,0.5),
+        inset 0 1px 1px rgba(255,255,255,0.06),
+        inset 0 -1px 1px rgba(0,0,0,0.3);
+      position: relative;
+    }
+
+    .knob::after {
+      content: '';
+      position: absolute;
+      top: 5px;
+      left: 50%;
+      width: 2px;
+      height: 12px;
+      background: #666;
+      border-radius: 1px;
+      transform-origin: bottom center;
+      transform: translateX(-50%) rotate(var(--angle, 0deg));
+    }
+
+    .knob-label {
+      font-size: 8px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #333;
+    }
+
+    /* ── Library ─────────────────────────────────────────────── */
+
+    .lib-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .lib-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: #141414;
+      border: 1px solid #1e1e1e;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .lib-item:hover {
+      background: #1a1a1a;
+      border-color: #2a2a2a;
+    }
+
+    .lib-thumb {
+      width: 40px;
+      height: 30px;
+      border-radius: 3px;
+      background: #111;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .lib-thumb-inner {
+      width: 100%;
+      height: 100%;
+    }
+
+    .lib-info { flex: 1; min-width: 0; }
+
+    .lib-title {
+      font-size: 11px;
+      font-weight: 500;
+      color: #777;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .lib-meta {
+      font-size: 9px;
+      color: #3a3a3a;
+      margin-top: 2px;
+      letter-spacing: 0.3px;
+    }
+
+    .lib-bpm { color: #555; }
+    .lib-key { color: #555; }
+
+    .lib-del {
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: #2a2a2a;
+      font-size: 14px;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: all 0.15s;
+    }
+
+    .lib-del:hover {
+      color: #666;
+      background: rgba(255,255,255,0.03);
+    }
+
+    /* ── Bottom Bar ──────────────────────────────────────────── */
+
+    .plugin-bottom {
+      padding: 8px 16px;
+      background: #141414;
+      border-top: 1px solid #1e1e1e;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .bottom-left {
+      font-size: 8px;
+      color: #2a2a2a;
+      letter-spacing: 1px;
+    }
+
+    .bottom-right {
+      display: flex;
+      gap: 6px;
+    }
+
+    .bottom-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: #222;
+    }
+
+    .bottom-dot.on {
+      background: #555;
+    }
+  </style>
+</head>
+<body>
+
+<div class="mockup-row">
+
+  <!-- ═══ IDLE ═══ -->
+  <div>
+    <div class="state-label">Idle</div>
+    <div class="plugin">
+      <div class="plugin-topbar">
+        <span class="plugin-logo">UnmixAudio</span>
+        <span class="plugin-version">v1.0.0</span>
+      </div>
+
+      <div class="tab-bar">
+        <div class="tab active">Analyzer</div>
+        <div class="tab">Library</div>
+        <div class="tab">Stems</div>
+      </div>
+
+      <div class="panel-body">
+        <div class="meter-section">
+          <div class="meter"><div class="meter-fill idle"></div></div>
+          <div class="meter"><div class="meter-fill idle"></div></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="metrics">
+          <div class="metric-card">
+            <div class="metric-label">BPM</div>
+            <div class="metric-value bpm idle">&mdash;</div>
+            <div class="metric-sub">beats / min</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Key</div>
+            <div class="metric-value key idle">&mdash;</div>
+            <div class="metric-secondary">&nbsp;</div>
+          </div>
+        </div>
+
+        <div class="status">
+          <div class="status-led off"></div>
+          <span class="status-text">Idle</span>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-start">
+            <span class="btn-dot"></span>
+            Start Analysis
+          </button>
+        </div>
+      </div>
+
+      <div class="plugin-bottom">
+        <span class="bottom-left">Tab Audio Analyzer</span>
+        <div class="bottom-right">
+          <div class="bottom-dot"></div>
+          <div class="bottom-dot"></div>
+          <div class="bottom-dot"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ ANALYZING ═══ -->
+  <div>
+    <div class="state-label">Analyzing</div>
+    <div class="plugin">
+      <div class="plugin-topbar">
+        <span class="plugin-logo">UnmixAudio</span>
+        <span class="plugin-version">v1.0.0</span>
+      </div>
+
+      <div class="tab-bar">
+        <div class="tab active">Analyzer</div>
+        <div class="tab">Library</div>
+        <div class="tab">Stems</div>
+      </div>
+
+      <div class="panel-body">
+        <div class="meter-section">
+          <div class="meter"><div class="meter-fill active"></div></div>
+          <div class="meter"><div class="meter-fill active-r"></div></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="metrics">
+          <div class="metric-card active pulse" style="--beat: 0.47s;">
+            <div class="metric-label">BPM</div>
+            <div class="metric-value bpm on">128</div>
+            <div class="metric-sub on">beats / min</div>
+            <div class="metric-alts">
+              <span>&darr; 64</span>
+              <span>&uarr; 256</span>
+            </div>
+          </div>
+          <div class="metric-card active">
+            <div class="metric-label">Key</div>
+            <div class="metric-value key on">Am</div>
+            <div class="metric-secondary" style="color: #444;">C Major</div>
+          </div>
+        </div>
+
+        <div class="knob-row">
+          <div class="knob-group">
+            <div class="knob" style="--angle: -30deg;"></div>
+            <span class="knob-label">Sens</span>
+          </div>
+          <div class="knob-group">
+            <div class="knob" style="--angle: 45deg;"></div>
+            <span class="knob-label">Range</span>
+          </div>
+        </div>
+
+        <div class="status">
+          <div class="status-led live"></div>
+          <span class="status-text on">Analyzing...</span>
+          <span class="status-timer">1:24</span>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-save">
+            <span class="btn-dot"></span>
+            Save to Library
+          </button>
+          <button class="btn btn-stop">
+            <span class="btn-dot on"></span>
+            Stop
+          </button>
+        </div>
+      </div>
+
+      <div class="plugin-bottom">
+        <span class="bottom-left">Tab Audio Analyzer</span>
+        <div class="bottom-right">
+          <div class="bottom-dot on"></div>
+          <div class="bottom-dot"></div>
+          <div class="bottom-dot"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ LIBRARY ═══ -->
+  <div>
+    <div class="state-label">Library</div>
+    <div class="plugin">
+      <div class="plugin-topbar">
+        <span class="plugin-logo">UnmixAudio</span>
+        <span class="plugin-version">v1.0.0</span>
+      </div>
+
+      <div class="tab-bar">
+        <div class="tab">Analyzer</div>
+        <div class="tab active">Library</div>
+        <div class="tab">Stems</div>
+      </div>
+
+      <div class="panel-body">
+        <div class="lib-list">
+          <div class="lib-item">
+            <div class="lib-thumb"><div class="lib-thumb-inner" style="background: linear-gradient(135deg,#1a1520,#151a20);"></div></div>
+            <div class="lib-info">
+              <div class="lib-title">Metro Boomin - Superhero</div>
+              <div class="lib-meta"><span class="lib-bpm">142 BPM</span> &middot; <span class="lib-key">F# Minor</span></div>
+            </div>
+            <button class="lib-del">&times;</button>
+          </div>
+          <div class="lib-item">
+            <div class="lib-thumb"><div class="lib-thumb-inner" style="background: linear-gradient(135deg,#201518,#151520);"></div></div>
+            <div class="lib-info">
+              <div class="lib-title">Travis Scott - FE!N ft. Playboi Carti</div>
+              <div class="lib-meta"><span class="lib-bpm">148 BPM</span> &middot; <span class="lib-key">E Minor</span></div>
+            </div>
+            <button class="lib-del">&times;</button>
+          </div>
+          <div class="lib-item">
+            <div class="lib-thumb"><div class="lib-thumb-inner" style="background: linear-gradient(135deg,#151a15,#1a1a15);"></div></div>
+            <div class="lib-info">
+              <div class="lib-title">Drake - Rich Flex ft. 21 Savage</div>
+              <div class="lib-meta"><span class="lib-bpm">80 BPM</span> &middot; <span class="lib-key">C Minor</span></div>
+            </div>
+            <button class="lib-del">&times;</button>
+          </div>
+          <div class="lib-item">
+            <div class="lib-thumb"><div class="lib-thumb-inner" style="background: linear-gradient(135deg,#18181e,#15151a);"></div></div>
+            <div class="lib-info">
+              <div class="lib-title">Gunna - fukumean</div>
+              <div class="lib-meta"><span class="lib-bpm">132 BPM</span> &middot; <span class="lib-key">A Minor</span></div>
+            </div>
+            <button class="lib-del">&times;</button>
+          </div>
+          <div class="lib-item">
+            <div class="lib-thumb"><div class="lib-thumb-inner" style="background: linear-gradient(135deg,#1a1518,#151820);"></div></div>
+            <div class="lib-info">
+              <div class="lib-title">21 Savage - redrum</div>
+              <div class="lib-meta"><span class="lib-bpm">120 BPM</span> &middot; <span class="lib-key">D Minor</span></div>
+            </div>
+            <button class="lib-del">&times;</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="plugin-bottom">
+        <span class="bottom-left">5 tracks saved</span>
+        <div class="bottom-right">
+          <div class="bottom-dot"></div>
+          <div class="bottom-dot on"></div>
+          <div class="bottom-dot"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

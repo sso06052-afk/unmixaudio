@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>UnmixAudio — Hardware Plugin Mockup v3</title>
+  <style>
+    /* ══════════════════════════════════════════════════════════
+       UAD 1176 / CLA-2A inspired — Brushed aluminum faceplate
+       Gray-silver panel, ivory VU meter, bakelite knobs
+    ══════════════════════════════════════════════════════════ */
+
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      background: #2a2a2a;
+      font-family: 'Inter', -apple-system, system-ui, sans-serif;
+      padding: 40px 20px;
+    }
+
+    .mockup-row {
+      display: flex;
+      gap: 48px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .state-label {
+      text-align: center;
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #555;
+      margin-bottom: 16px;
+    }
+
+    /* ── Plugin Chassis ──────────────────────────────────────── */
+
+    .plugin {
+      width: 370px;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow:
+        0 20px 60px rgba(0,0,0,0.6),
+        0 2px 8px rgba(0,0,0,0.4),
+        inset 0 1px 0 rgba(255,255,255,0.12),
+        inset 0 -1px 0 rgba(0,0,0,0.2);
+      border: 1px solid #555;
+    }
+
+    /* ── Faceplate — brushed aluminum ────────────────────────── */
+
+    .faceplate {
+      background:
+        /* subtle vertical brush strokes */
+        repeating-linear-gradient(
+          90deg,
+          transparent 0px,
+          rgba(255,255,255,0.015) 1px,
+          transparent 2px,
+          rgba(0,0,0,0.01) 3px
+        ),
+        /* main metal gradient — warm silver gray like 1176 */
+        linear-gradient(
+          180deg,
+          #7a7d82 0%,
+          #6e7176 8%,
+          #737679 20%,
+          #6a6d71 40%,
+          #6e7176 60%,
+          #727578 80%,
+          #686b6f 100%
+        );
+    }
+
+    /* ── Top Bar ─────────────────────────────────────────────── */
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 18px;
+      border-bottom: 1px solid rgba(0,0,0,0.2);
+      box-shadow: 0 1px 0 rgba(255,255,255,0.06);
+    }
+
+    .logo {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #2a2c2e;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.15);
+    }
+
+    .version {
+      font-size: 9px;
+      font-weight: 600;
+      color: #555860;
+      letter-spacing: 1px;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.1);
+    }
+
+    /* ── Tab Selector (like 1176 ratio buttons) ──────────────── */
+
+    .tab-bar {
+      display: flex;
+      padding: 10px 18px;
+      gap: 4px;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 7px 0;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: all 0.15s;
+    }
+
+    .tab.off {
+      background: linear-gradient(180deg, #5a5d62, #4e5155);
+      color: #33363a;
+      border: 1px solid rgba(0,0,0,0.25);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.06),
+        0 1px 2px rgba(0,0,0,0.2);
+      text-shadow: 0 -1px 0 rgba(0,0,0,0.2);
+    }
+
+    .tab.off:hover {
+      background: linear-gradient(180deg, #62656a, #55585d);
+      color: #444;
+    }
+
+    .tab.on {
+      background: linear-gradient(180deg, #3a3c3f, #2e3033);
+      color: #bbb;
+      border: 1px solid rgba(0,0,0,0.35);
+      box-shadow:
+        inset 0 2px 4px rgba(0,0,0,0.35),
+        0 1px 0 rgba(255,255,255,0.04);
+      text-shadow: 0 0 8px rgba(200,200,200,0.15);
+    }
+
+    /* ── Body ────────────────────────────────────────────────── */
+
+    .body {
+      padding: 14px 18px 18px;
+    }
+
+    /* ── VU Meter (1176 / CLA-2A ivory style) ────────────────── */
+
+    .vu-section {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .vu-meter {
+      flex: 1;
+      height: 80px;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 2px solid #3a3c3f;
+      box-shadow:
+        inset 0 2px 6px rgba(0,0,0,0.3),
+        0 1px 0 rgba(255,255,255,0.05);
+      position: relative;
+      /* Cream / ivory background like real VU meters */
+      background:
+        linear-gradient(180deg,
+          #e8e0cc 0%,
+          #ddd5c0 30%,
+          #d8d0ba 60%,
+          #d0c8b0 100%
+        );
+    }
+
+    .vu-meter::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 40%;
+      background: linear-gradient(180deg, rgba(255,255,255,0.25), transparent);
+      pointer-events: none;
+    }
+
+    .vu-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      padding: 6px 8px;
+    }
+
+    .vu-title {
+      text-align: center;
+      font-size: 7px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: #4a4538;
+      text-transform: uppercase;
+      position: relative;
+      z-index: 1;
+    }
+
+    .vu-markings {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 2px;
+      margin-top: 4px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .vu-mark {
+      font-size: 6.5px;
+      font-weight: 700;
+      color: #5a5548;
+    }
+
+    .vu-mark.danger {
+      color: #8b3a2a;
+    }
+
+    /* Needle */
+    .vu-needle-wrap {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 4px;
+      height: 42px;
+    }
+
+    .vu-needle {
+      width: 1.5px;
+      height: 42px;
+      background: linear-gradient(0deg, #1a1a1a 0%, #333 70%, #8b3a2a 100%);
+      transform-origin: bottom center;
+      transform: rotate(var(--needle, -30deg));
+      border-radius: 1px 1px 0 0;
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      margin-left: -0.75px;
+      transition: transform 0.8s cubic-bezier(0.15, 0.85, 0.3, 1);
+    }
+
+    .vu-pivot {
+      width: 6px;
+      height: 6px;
+      background: radial-gradient(circle at 35% 35%, #444, #1a1a1a);
+      border-radius: 50%;
+      position: absolute;
+      bottom: -3px;
+      left: 50%;
+      margin-left: -3px;
+      z-index: 2;
+    }
+
+    .vu-ch-label {
+      position: absolute;
+      bottom: 4px;
+      font-size: 7px;
+      font-weight: 700;
+      color: #6a6358;
+      z-index: 1;
+    }
+
+    .vu-ch-label.left { left: 8px; }
+    .vu-ch-label.right { right: 8px; }
+
+    /* ── Recessed Display Panel ───────────────────────────────── */
+
+    .display-panel {
+      background: #1e1f22;
+      border-radius: 5px;
+      padding: 14px 12px;
+      margin-bottom: 14px;
+      box-shadow:
+        inset 0 3px 8px rgba(0,0,0,0.5),
+        inset 0 0 15px rgba(0,0,0,0.2),
+        0 1px 0 rgba(255,255,255,0.04);
+      border: 1px solid #2a2b2e;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .metric {
+      text-align: center;
+    }
+
+    .metric-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: #44464a;
+      margin-bottom: 6px;
+    }
+
+    .metric-val {
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+
+    .metric-val.bpm {
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: -2px;
+    }
+
+    .metric-val.key-val {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .metric-val.idle-val {
+      color: #2a2b2e;
+    }
+
+    .metric-val.on-val {
+      color: #d5d5d5;
+      text-shadow: 0 0 12px rgba(180,180,180,0.12);
+    }
+
+    .metric-unit {
+      font-size: 8px;
+      color: #33353a;
+      margin-top: 5px;
+      letter-spacing: 1px;
+    }
+
+    .metric-unit.on-val {
+      color: #4a4c50;
+    }
+
+    .metric-alts {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 5px;
+    }
+
+    .metric-alts span {
+      font-size: 8px;
+      color: #3a3c40;
+    }
+
+    .metric-secondary {
+      font-size: 10px;
+      color: #4a4c50;
+      margin-top: 5px;
+      min-height: 14px;
+    }
+
+    /* ── Engraved Section Label ───────────────────────────────── */
+
+    .engrave {
+      text-align: center;
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #555860;
+      margin-bottom: 10px;
+      text-shadow:
+        0 -1px 0 rgba(0,0,0,0.25),
+        0 1px 0 rgba(255,255,255,0.08);
+    }
+
+    /* ── Knobs (bakelite style) ───────────────────────────────── */
+
+    .knob-row {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      margin-bottom: 14px;
+      padding: 4px 0;
+    }
+
+    .knob-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .knob-outer {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 40% 35%,
+          #444, #2a2a2a 40%, #1e1e1e 70%, #181818
+        );
+      box-shadow:
+        0 4px 10px rgba(0,0,0,0.5),
+        0 1px 3px rgba(0,0,0,0.4),
+        inset 0 1px 1px rgba(255,255,255,0.08);
+      position: relative;
+      cursor: pointer;
+    }
+
+    /* Knurled edge texture */
+    .knob-outer::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background:
+        repeating-conic-gradient(
+          from 0deg,
+          rgba(255,255,255,0.04) 0deg 3deg,
+          transparent 3deg 6deg
+        );
+    }
+
+    /* Chrome cap */
+    .knob-cap {
+      position: absolute;
+      top: 8px; left: 8px; right: 8px; bottom: 8px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 40% 35%,
+          #666, #444 50%, #333
+        );
+      box-shadow:
+        inset 0 1px 2px rgba(255,255,255,0.1),
+        inset 0 -1px 2px rgba(0,0,0,0.3);
+    }
+
+    /* Pointer line */
+    .knob-pointer {
+      position: absolute;
+      top: 4px;
+      left: 50%;
+      width: 2px;
+      height: 14px;
+      background: #ccc;
+      transform: translateX(-50%) rotate(var(--angle, 0deg));
+      transform-origin: 1px 22px;
+      border-radius: 1px;
+      z-index: 3;
+      box-shadow: 0 0 3px rgba(200,200,200,0.2);
+    }
+
+    .knob-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #3a3c3f;
+      text-shadow:
+        0 -1px 0 rgba(0,0,0,0.2),
+        0 1px 0 rgba(255,255,255,0.06);
+    }
+
+    /* Tick marks around knob */
+    .knob-ticks {
+      position: absolute;
+      inset: -6px;
+    }
+
+    .knob-tick {
+      position: absolute;
+      width: 1px;
+      height: 4px;
+      background: #555;
+      top: 0;
+      left: 50%;
+      transform-origin: 0.5px 32px;
+      border-radius: 0.5px;
+    }
+
+    /* ── Status Row ──────────────────────────────────────────── */
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding: 6px 10px;
+      background: rgba(0,0,0,0.1);
+      border-radius: 3px;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.15);
+    }
+
+    .led {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      border: 1px solid rgba(0,0,0,0.3);
+    }
+
+    .led-off {
+      background: radial-gradient(circle at 35% 35%, #555, #333);
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+    }
+
+    .led-on {
+      background: radial-gradient(circle at 35% 35%, #f0f0f0, #bbb);
+      box-shadow:
+        0 0 6px rgba(220,220,220,0.4),
+        0 0 12px rgba(220,220,220,0.15),
+        inset 0 1px 1px rgba(255,255,255,0.5);
+      animation: ledBreath 1.8s ease-in-out infinite;
+    }
+
+    @keyframes ledBreath {
+      0%, 100% { box-shadow: 0 0 6px rgba(220,220,220,0.4), 0 0 12px rgba(220,220,220,0.15); }
+      50% { box-shadow: 0 0 3px rgba(220,220,220,0.2), 0 0 6px rgba(220,220,220,0.08); }
+    }
+
+    .status-text {
+      font-size: 10px;
+      color: #555860;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.06);
+    }
+
+    .status-text.active {
+      color: #44464a;
+    }
+
+    .status-timer {
+      margin-left: auto;
+      font-size: 9px;
+      color: #44464a;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Hardware Buttons ────────────────────────────────────── */
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .hw-btn {
+      width: 100%;
+      padding: 10px 16px;
+      border-radius: 3px;
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.12s;
+    }
+
+    .btn-main {
+      background: linear-gradient(180deg, #5a5d62, #4e5155);
+      border: 1px solid rgba(0,0,0,0.3);
+      color: #222;
+      box-shadow:
+        0 2px 6px rgba(0,0,0,0.3),
+        inset 0 1px 0 rgba(255,255,255,0.1),
+        inset 0 -1px 0 rgba(0,0,0,0.15);
+      text-shadow: 0 1px 0 rgba(255,255,255,0.08);
+    }
+
+    .btn-main:hover {
+      background: linear-gradient(180deg, #62656a, #55585d);
+      color: #1a1a1a;
+    }
+
+    .btn-main:active {
+      background: linear-gradient(180deg, #4a4d52, #52555a);
+      box-shadow:
+        0 1px 2px rgba(0,0,0,0.3),
+        inset 0 2px 4px rgba(0,0,0,0.2);
+      transform: translateY(1px);
+    }
+
+    .btn-stop {
+      background: linear-gradient(180deg, #4e5155, #44474c);
+      border: 1px solid rgba(0,0,0,0.3);
+      color: #888;
+      box-shadow:
+        0 2px 4px rgba(0,0,0,0.25),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+
+    .btn-stop:hover {
+      color: #aaa;
+      background: linear-gradient(180deg, #55585d, #4a4d52);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid rgba(0,0,0,0.15);
+      color: #4a4d52;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+      text-shadow: 0 1px 0 rgba(255,255,255,0.05);
+    }
+
+    .btn-secondary:hover {
+      color: #555860;
+      border-color: rgba(0,0,0,0.25);
+      background: rgba(0,0,0,0.05);
+    }
+
+    .btn-led {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+    }
+
+    .btn-led-off {
+      background: #3a3c3f;
+    }
+
+    .btn-led-on {
+      background: #ccc;
+      box-shadow: 0 0 4px rgba(200,200,200,0.4);
+    }
+
+    /* ── Bottom Bar ──────────────────────────────────────────── */
+
+    .bottombar {
+      padding: 8px 18px;
+      border-top: 1px solid rgba(0,0,0,0.2);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .bottom-text {
+      font-size: 7px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #4a4d52;
+      text-shadow:
+        0 -1px 0 rgba(0,0,0,0.15),
+        0 1px 0 rgba(255,255,255,0.06);
+    }
+
+    .bottom-dots {
+      display: flex;
+      gap: 4px;
+    }
+
+    .bdot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: #555;
+    }
+
+    .bdot.active {
+      background: #999;
+      box-shadow: 0 0 3px rgba(150,150,150,0.3);
+    }
+
+    /* ── Screw Detail ────────────────────────────────────────── */
+
+    .screw-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 8px;
+      margin-bottom: 4px;
+      margin-top: 4px;
+    }
+
+    .screw {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 35% 30%, #888, #555 60%, #444);
+      box-shadow:
+        inset 0 1px 2px rgba(0,0,0,0.4),
+        0 1px 0 rgba(255,255,255,0.06);
+      position: relative;
+    }
+
+    .screw::after {
+      content: '+';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 6px;
+      color: rgba(0,0,0,0.4);
+      line-height: 1;
+    }
+
+    /* ── Library Items ───────────────────────────────────────── */
+
+    .lib-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .lib-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      background: rgba(0,0,0,0.08);
+      border: 1px solid rgba(0,0,0,0.1);
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.12s;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.08);
+    }
+
+    .lib-item:hover {
+      background: rgba(0,0,0,0.12);
+      border-color: rgba(0,0,0,0.18);
+    }
+
+    .lib-thumb {
+      width: 38px;
+      height: 28px;
+      border-radius: 2px;
+      flex-shrink: 0;
+      overflow: hidden;
+      border: 1px solid rgba(0,0,0,0.15);
+    }
+
+    .lib-info { flex: 1; min-width: 0; }
+
+    .lib-title {
+      font-size: 10px;
+      font-weight: 600;
+      color: #3a3c3f;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.06);
+    }
+
+    .lib-meta {
+      font-size: 8px;
+      color: #555860;
+      margin-top: 2px;
+      letter-spacing: 0.3px;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.04);
+    }
+
+    .lib-del {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: #555;
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: all 0.12s;
+    }
+
+    .lib-del:hover {
+      color: #333;
+      background: rgba(0,0,0,0.08);
+    }
+
+    /* ── Separator ───────────────────────────────────────────── */
+
+    .sep {
+      height: 1px;
+      background: rgba(0,0,0,0.12);
+      margin: 10px 0;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04);
+    }
+  </style>
+</head>
+<body>
+
+<div class="mockup-row">
+
+  <!-- ═══ IDLE STATE ═══ -->
+  <div>
+    <div class="state-label">Idle</div>
+    <div class="plugin">
+      <div class="faceplate">
+        <div class="screw-row" style="padding-top: 6px;">
+          <div class="screw"></div>
+          <div class="screw"></div>
+        </div>
+
+        <div class="topbar">
+          <span class="logo">UnmixAudio</span>
+          <span class="version">v1.0</span>
+        </div>
+
+        <div class="tab-bar">
+          <div class="tab on">Analyzer</div>
+          <div class="tab off">Library</div>
+          <div class="tab off">Stems</div>
+        </div>
+
+        <div class="body">
+          <div class="engrave">Level</div>
+
+          <div class="vu-section">
+            <div class="vu-meter">
+              <div class="vu-inner">
+                <div class="vu-title">VU</div>
+                <div class="vu-markings">
+                  <span class="vu-mark">-20</span>
+                  <span class="vu-mark">-10</span>
+                  <span class="vu-mark">-5</span>
+                  <span class="vu-mark">0</span>
+                  <span class="vu-mark danger">+3</span>
+                </div>
+                <div class="vu-needle-wrap">
+                  <div class="vu-needle" style="--needle: -35deg;"></div>
+                  <div class="vu-pivot"></div>
+                </div>
+                <span class="vu-ch-label left">L</span>
+              </div>
+            </div>
+            <div class="vu-meter">
+              <div class="vu-inner">
+                <div class="vu-title">VU</div>
+                <div class="vu-markings">
+                  <span class="vu-mark">-20</span>
+                  <span class="vu-mark">-10</span>
+                  <span class="vu-mark">-5</span>
+                  <span class="vu-mark">0</span>
+                  <span class="vu-mark danger">+3</span>
+                </div>
+                <div class="vu-needle-wrap">
+                  <div class="vu-needle" style="--needle: -35deg;"></div>
+                  <div class="vu-pivot"></div>
+                </div>
+                <span class="vu-ch-label right" style="left: 8px;">R</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="display-panel">
+            <div class="metrics">
+              <div class="metric">
+                <div class="metric-label">BPM</div>
+                <div class="metric-val bpm idle-val">&mdash;</div>
+                <div class="metric-unit">beats / min</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Key</div>
+                <div class="metric-val key-val idle-val">&mdash;</div>
+                <div class="metric-unit">&nbsp;</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="status">
+            <div class="led led-off"></div>
+            <span class="status-text">Idle</span>
+          </div>
+
+          <div class="actions">
+            <button class="hw-btn btn-main">
+              <span class="btn-led btn-led-off"></span>
+              Start Analysis
+            </button>
+          </div>
+        </div>
+
+        <div class="bottombar">
+          <span class="bottom-text">Tab Audio Analyzer</span>
+          <div class="bottom-dots">
+            <div class="bdot"></div>
+            <div class="bdot"></div>
+            <div class="bdot"></div>
+          </div>
+        </div>
+
+        <div class="screw-row" style="padding-bottom: 6px;">
+          <div class="screw"></div>
+          <div class="screw"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ ANALYZING STATE ═══ -->
+  <div>
+    <div class="state-label">Analyzing</div>
+    <div class="plugin">
+      <div class="faceplate">
+        <div class="screw-row" style="padding-top: 6px;">
+          <div class="screw"></div>
+          <div class="screw"></div>
+        </div>
+
+        <div class="topbar">
+          <span class="logo">UnmixAudio</span>
+          <span class="version">v1.0</span>
+        </div>
+
+        <div class="tab-bar">
+          <div class="tab on">Analyzer</div>
+          <div class="tab off">Library</div>
+          <div class="tab off">Stems</div>
+        </div>
+
+        <div class="body">
+          <div class="engrave">Level</div>
+
+          <div class="vu-section">
+            <div class="vu-meter">
+              <div class="vu-inner">
+                <div class="vu-title">VU</div>
+                <div class="vu-markings">
+                  <span class="vu-mark">-20</span>
+                  <span class="vu-mark">-10</span>
+                  <span class="vu-mark">-5</span>
+                  <span class="vu-mark">0</span>
+                  <span class="vu-mark danger">+3</span>
+                </div>
+                <div class="vu-needle-wrap">
+                  <div class="vu-needle" style="--needle: 12deg;"></div>
+                  <div class="vu-pivot"></div>
+                </div>
+                <span class="vu-ch-label left">L</span>
+              </div>
+            </div>
+            <div class="vu-meter">
+              <div class="vu-inner">
+                <div class="vu-title">VU</div>
+                <div class="vu-markings">
+                  <span class="vu-mark">-20</span>
+                  <span class="vu-mark">-10</span>
+                  <span class="vu-mark">-5</span>
+                  <span class="vu-mark">0</span>
+                  <span class="vu-mark danger">+3</span>
+                </div>
+                <div class="vu-needle-wrap">
+                  <div class="vu-needle" style="--needle: 5deg;"></div>
+                  <div class="vu-pivot"></div>
+                </div>
+                <span class="vu-ch-label right" style="left: 8px;">R</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="display-panel">
+            <div class="metrics">
+              <div class="metric">
+                <div class="metric-label">BPM</div>
+                <div class="metric-val bpm on-val">128</div>
+                <div class="metric-unit on-val">beats / min</div>
+                <div class="metric-alts">
+                  <span>&darr; 64</span>
+                  <span>&uarr; 256</span>
+                </div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Key</div>
+                <div class="metric-val key-val on-val">Am</div>
+                <div class="metric-secondary">C Major</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="knob-row">
+            <div class="knob-group">
+              <div class="knob-outer">
+                <div class="knob-cap"></div>
+                <div class="knob-pointer" style="--angle: -40deg;"></div>
+                <!-- Ticks -->
+                <div class="knob-ticks">
+                  <div class="knob-tick" style="transform: rotate(-120deg);"></div>
+                  <div class="knob-tick" style="transform: rotate(-80deg);"></div>
+                  <div class="knob-tick" style="transform: rotate(-40deg);"></div>
+                  <div class="knob-tick" style="transform: rotate(0deg);"></div>
+                  <div class="knob-tick" style="transform: rotate(40deg);"></div>
+                  <div class="knob-tick" style="transform: rotate(80deg);"></div>
+                  <div class="knob-tick" style="transform: rotate(120deg);"></div>
+                </div>
+              </div>
+              <span class="knob-label">Sens</span>
+            </div>
+            <div class="knob-group">
+              <div class="knob-outer">
+                <div class="knob-cap"></div>
+                <div class="knob-pointer" style="--angle: 50deg;"></div>
+                <div class="knob-ticks">
+                  <div class="knob-tick" style="transform: rotate(-120deg);"></div>
+                  <div class="knob-tick" style="transform: rotate(-80deg);"></div>
+                  <div class="knob-tick" style="transform: rotate(-40deg);"></div>
+                  <div class="knob-tick" style="transform: rotate(0deg);"></div>
+                  <div class="knob-tick" style="transform: rotate(40deg);"></div>
+                  <div class="knob-tick" style="transform: rotate(80deg);"></div>
+                  <div class="knob-tick" style="transform: rotate(120deg);"></div>
+                </div>
+              </div>
+              <span class="knob-label">Range</span>
+            </div>
+          </div>
+
+          <div class="status">
+            <div class="led led-on"></div>
+            <span class="status-text active">Analyzing...</span>
+            <span class="status-timer">1:24</span>
+          </div>
+
+          <div class="actions">
+            <button class="hw-btn btn-secondary">
+              <span class="btn-led btn-led-off"></span>
+              Save to Library
+            </button>
+            <button class="hw-btn btn-stop">
+              <span class="btn-led btn-led-on"></span>
+              Stop
+            </button>
+          </div>
+        </div>
+
+        <div class="bottombar">
+          <span class="bottom-text">Tab Audio Analyzer</span>
+          <div class="bottom-dots">
+            <div class="bdot active"></div>
+            <div class="bdot"></div>
+            <div class="bdot"></div>
+          </div>
+        </div>
+
+        <div class="screw-row" style="padding-bottom: 6px;">
+          <div class="screw"></div>
+          <div class="screw"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ LIBRARY VIEW ═══ -->
+  <div>
+    <div class="state-label">Library</div>
+    <div class="plugin">
+      <div class="faceplate">
+        <div class="screw-row" style="padding-top: 6px;">
+          <div class="screw"></div>
+          <div class="screw"></div>
+        </div>
+
+        <div class="topbar">
+          <span class="logo">UnmixAudio</span>
+          <span class="version">v1.0</span>
+        </div>
+
+        <div class="tab-bar">
+          <div class="tab off">Analyzer</div>
+          <div class="tab on">Library</div>
+          <div class="tab off">Stems</div>
+        </div>
+
+        <div class="body">
+          <div class="engrave">Saved Tracks</div>
+
+          <div class="lib-list">
+            <div class="lib-item">
+              <div class="lib-thumb">
+                <div style="width:100%;height:100%;background:linear-gradient(135deg,#4a4550,#3a3a45);"></div>
+              </div>
+              <div class="lib-info">
+                <div class="lib-title">Metro Boomin - Superhero</div>
+                <div class="lib-meta">142 BPM &middot; F# Minor</div>
+              </div>
+              <button class="lib-del">&times;</button>
+            </div>
+            <div class="lib-item">
+              <div class="lib-thumb">
+                <div style="width:100%;height:100%;background:linear-gradient(135deg,#504540,#3a3540);"></div>
+              </div>
+              <div class="lib-info">
+                <div class="lib-title">Travis Scott - FE!N ft. Playboi Carti</div>
+                <div class="lib-meta">148 BPM &middot; E Minor</div>
+              </div>
+              <button class="lib-del">&times;</button>
+            </div>
+            <div class="lib-item">
+              <div class="lib-thumb">
+                <div style="width:100%;height:100%;background:linear-gradient(135deg,#404a45,#3a4540);"></div>
+              </div>
+              <div class="lib-info">
+                <div class="lib-title">Drake - Rich Flex ft. 21 Savage</div>
+                <div class="lib-meta">80 BPM &middot; C Minor</div>
+              </div>
+              <button class="lib-del">&times;</button>
+            </div>
+            <div class="lib-item">
+              <div class="lib-thumb">
+                <div style="width:100%;height:100%;background:linear-gradient(135deg,#454050,#3a3545);"></div>
+              </div>
+              <div class="lib-info">
+                <div class="lib-title">Gunna - fukumean</div>
+                <div class="lib-meta">132 BPM &middot; A Minor</div>
+              </div>
+              <button class="lib-del">&times;</button>
+            </div>
+            <div class="lib-item">
+              <div class="lib-thumb">
+                <div style="width:100%;height:100%;background:linear-gradient(135deg,#4a4545,#40383a);"></div>
+              </div>
+              <div class="lib-info">
+                <div class="lib-title">21 Savage - redrum</div>
+                <div class="lib-meta">120 BPM &middot; D Minor</div>
+              </div>
+              <button class="lib-del">&times;</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="bottombar">
+          <span class="bottom-text">5 Tracks Saved</span>
+          <div class="bottom-dots">
+            <div class="bdot"></div>
+            <div class="bdot active"></div>
+            <div class="bdot"></div>
+          </div>
+        </div>
+
+        <div class="screw-row" style="padding-bottom: 6px;">
+          <div class="screw"></div>
+          <div class="screw"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

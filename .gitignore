@@ -1,0 +1,16 @@
+# Secrets
+backend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+backend/.venv/
+
+# OS
+.DS_Store
