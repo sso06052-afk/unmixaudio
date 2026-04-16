@@ -86,7 +86,22 @@ async def analyze_ws(websocket: WebSocket):
 
     try:
         while True:
-            data = await websocket.receive_bytes()
+            msg = await websocket.receive()
+
+            # 텍스트 메시지: 제어 커맨드 (reset 등)
+            if "text" in msg:
+                try:
+                    cmd = json.loads(msg["text"])
+                    if cmd.get("type") == "reset":
+                        accum.clear()
+                        accum_len = 0
+                        sample_rate_ref = 0
+                        print("[ws] accum reset", flush=True)
+                except Exception:
+                    pass
+                continue
+
+            data = msg.get("bytes") or b""
             if len(data) < 8:
                 await websocket.send_text(json.dumps({"error": "packet too small"}))
                 continue

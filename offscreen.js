@@ -258,6 +258,11 @@ function resetAccumulators() {
   if (sampleBufferRaw && sampleBufferRaw.length > 0) sampleBufferRaw.fill(0);
   if (sampleBufferHp && sampleBufferHp.length > 0) sampleBufferHp.fill(0);
   if (sampleBufferLp && sampleBufferLp.length > 0) sampleBufferLp.fill(0);
+
+  // 백엔드 누적 버퍼도 리셋
+  if (analysisWs && analysisWs.readyState === WebSocket.OPEN) {
+    analysisWs.send(JSON.stringify({ type: 'reset' }));
+  }
 }
 
 async function startAnalysis(streamId) {
