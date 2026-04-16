@@ -1,46 +1,34 @@
 """analyze.py — Real-time BPM & Key detection via WebSocket
 PCM Float32 청크(10초 링버퍼)를 수신 → Essentia로 분석 → JSON 반환
+essentia는 ProcessPoolExecutor 워커 프로세스에서 격리 실행
+— segfault 발생해도 메인 서버 프로세스 보호
 """
 import json
 import struct
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+import concurrent.futures
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter()
 
-# essentia는 첫 분석 요청 시 lazy import — 서버 startup에 영향 없음
-_es = None
-_ESSENTIA_OK: bool | None = None  # None=미시도, True=성공, False=실패
-
-# CPU-heavy 분석을 스레드풀에서 실행 (이벤트 루프 비블로킹)
-_executor = ThreadPoolExecutor(max_workers=2)
+# 워커 프로세스 풀 (essentia segfault 격리)
+_executor: ProcessPoolExecutor | None = ProcessPoolExecutor(max_workers=1)
 
 
-def _ensure_essentia() -> bool:
-    global _es, _ESSENTIA_OK
-    if _ESSENTIA_OK is not None:
-        return _ESSENTIA_OK
-    try:
-        import essentia.standard as _mod  # type: ignore
-        _es = _mod
-        _ESSENTIA_OK = True
-    except Exception:
-        _ESSENTIA_OK = False
-    return _ESSENTIA_OK
+def _analyze_isolated(pcm_bytes: bytes, sample_rate: int) -> dict:
+    """워커 프로세스에서 실행 — essentia import + 분석"""
+    import essentia.standard as es  # type: ignore
+    import numpy as np
 
-
-def _analyze(pcm: np.ndarray, sample_rate: int) -> dict:
-    if not _ensure_essentia() or _es is None:
-        return {"error": "essentia not available"}
-
+    pcm = np.frombuffer(pcm_bytes, dtype="<f4")
     result: dict = {}
 
     # ── Key ──────────────────────────────────────────────────────
     try:
-        key_extractor = _es.KeyExtractor(
+        key_extractor = es.KeyExtractor(
             averageDetuningCorrection=True,
             frameSize=4096,
             hopSize=4096,
@@ -66,7 +54,7 @@ def _analyze(pcm: np.ndarray, sample_rate: int) -> dict:
 
     # ── BPM ──────────────────────────────────────────────────────
     try:
-        bpm_estimator = _es.PercivalBpmEstimator(
+        bpm_estimator = es.PercivalBpmEstimator(
             frameSize=1024,
             frameSizeOSS=2048,
             hopSize=128,
@@ -83,6 +71,14 @@ def _analyze(pcm: np.ndarray, sample_rate: int) -> dict:
     return result
 
 
+def _get_executor() -> ProcessPoolExecutor:
+    """executor가 죽었으면 새로 생성"""
+    global _executor
+    if _executor is None or _executor._broken:  # type: ignore[attr-defined]
+        _executor = ProcessPoolExecutor(max_workers=1)
+    return _executor
+
+
 @router.websocket("/ws/analyze")
 async def analyze_ws(websocket: WebSocket):
     """
@@ -91,10 +87,8 @@ async def analyze_ws(websocket: WebSocket):
     - server → client: JSON text frame = {"key": "A Minor", "bpm": 90.0, "keyStrength": 0.82}
     """
     await websocket.accept()
-
-    # essentia 가용성은 첫 _analyze 호출 시 확인
-
     loop = asyncio.get_event_loop()
+
     try:
         while True:
             data = await websocket.receive_bytes()
@@ -103,13 +97,25 @@ async def analyze_ws(websocket: WebSocket):
                 continue
 
             sample_rate = struct.unpack_from("<I", data, 0)[0]
-            pcm = np.frombuffer(data, dtype="<f4", offset=4).copy()
+            pcm_bytes = data[4:]
 
-            if len(pcm) < sample_rate:  # 최소 1초 데이터
+            if len(pcm_bytes) < sample_rate * 4:  # 최소 1초
                 await websocket.send_text(json.dumps({"error": "insufficient audio"}))
                 continue
 
-            result = await loop.run_in_executor(_executor, _analyze, pcm, sample_rate)
+            try:
+                executor = _get_executor()
+                result = await loop.run_in_executor(
+                    executor, _analyze_isolated, pcm_bytes, sample_rate
+                )
+            except concurrent.futures.process.BrokenProcessPool:
+                # 워커 crash → executor 재생성, 이번 요청은 에러 반환
+                global _executor
+                _executor = ProcessPoolExecutor(max_workers=1)
+                result = {"error": "worker crashed, will retry next request"}
+            except Exception as e:
+                result = {"error": str(e)}
+
             await websocket.send_text(json.dumps(result))
 
     except WebSocketDisconnect:
