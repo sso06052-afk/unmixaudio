@@ -78,16 +78,7 @@ def _analyze(pcm: np.ndarray, sample_rate: int) -> dict:
             method="multifeature",
         )
         bpm_raw, _, _, _, _ = rhythm(pcm_norm)
-        bpm = float(bpm_raw)
-
-        # Half-time 보정: trap/drill은 70BPM 감지 → 실제 140BPM
-        if 50.0 <= bpm <= 90.0:
-            bpm_double = bpm * 2.0
-            if bpm_double <= 220.0:
-                bpm = bpm_double
-                result["bpmHalftimeCorrected"] = True
-
-        result["bpm"] = round(bpm, 1)
+        result["bpm"] = round(float(bpm_raw), 1)
     except Exception as e:
         result["bpmError"] = str(e)
         print(f"[essentia] RhythmExtractor error: {e}", flush=True)
