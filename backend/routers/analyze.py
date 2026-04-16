@@ -103,6 +103,10 @@ async def analyze_ws(websocket: WebSocket):
         while True:
             msg = await websocket.receive()
 
+            if msg.get("type") == "websocket.disconnect":
+                print("[ws] disconnected", flush=True)
+                break
+
             # 텍스트 메시지: 제어 커맨드 (reset 등)
             if "text" in msg:
                 try:
