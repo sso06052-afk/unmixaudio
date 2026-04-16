@@ -4,44 +4,34 @@ PCM Float32 청크(10초 링버퍼)를 수신 → Essentia로 분석 → JSON �
 import json
 import struct
 import asyncio
-import subprocess
-import sys
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter()
 
-# ── Essentia 가용성 체크 (서버 시작 시 1회)
-# subprocess로 실행 → macOS Rosetta hang도 타임아웃으로 처리
-def _check_essentia() -> bool:
-    try:
-        r = subprocess.run(
-            [sys.executable, "-c", "import essentia.standard; print('ok')"],
-            capture_output=True,
-            timeout=8,
-        )
-        return r.returncode == 0 and b"ok" in r.stdout
-    except (subprocess.TimeoutExpired, Exception):
-        return False
+# essentia import — Linux(Railway)에서는 정상, macOS에서는 실패해도 괜찮음
+try:
+    import essentia.standard as _es  # type: ignore
+    _ESSENTIA_OK = True
+except Exception:
+    _es = None
+    _ESSENTIA_OK = False
+
+# CPU-heavy 분석을 스레드풀에서 실행 (이벤트 루프 비블로킹)
+_executor = ThreadPoolExecutor(max_workers=2)
 
 
-_ESSENTIA_OK: bool = _check_essentia()
-# CPU-heavy 분석은 별도 프로세스에서 실행 (essentia가 이벤트 루프 블로킹 방지)
-_executor = ProcessPoolExecutor(max_workers=1) if _ESSENTIA_OK else None
+def _analyze(pcm: np.ndarray, sample_rate: int) -> dict:
+    if not _ESSENTIA_OK or _es is None:
+        return {"error": "essentia not available"}
 
-
-def _analyze_worker(pcm_bytes: bytes, sample_rate: int) -> dict:
-    """워커 프로세스에서 실행 — essentia import + 분석"""
-    import essentia.standard as es  # type: ignore
-
-    pcm = np.frombuffer(pcm_bytes, dtype="<f4")
     result: dict = {}
 
     # ── Key ──────────────────────────────────────────────────────
     try:
-        key_extractor = es.KeyExtractor(
+        key_extractor = _es.KeyExtractor(
             averageDetuningCorrection=True,
             frameSize=4096,
             hopSize=4096,
@@ -67,7 +57,7 @@ def _analyze_worker(pcm_bytes: bytes, sample_rate: int) -> dict:
 
     # ── BPM ──────────────────────────────────────────────────────
     try:
-        bpm_estimator = es.PercivalBpmEstimator(
+        bpm_estimator = _es.PercivalBpmEstimator(
             frameSize=1024,
             frameSizeOSS=2048,
             hopSize=128,
@@ -94,7 +84,7 @@ async def analyze_ws(websocket: WebSocket):
     await websocket.accept()
 
     if not _ESSENTIA_OK:
-        await websocket.send_text(json.dumps({"error": "essentia not available on this server"}))
+        await websocket.send_text(json.dumps({"error": "essentia not available"}))
         await websocket.close()
         return
 
@@ -107,14 +97,13 @@ async def analyze_ws(websocket: WebSocket):
                 continue
 
             sample_rate = struct.unpack_from("<I", data, 0)[0]
-            # pcm bytes 그대로 워커에 전달 (ndarray는 pickling 비용 큼)
-            pcm_bytes = data[4:]
+            pcm = np.frombuffer(data, dtype="<f4", offset=4).copy()
 
-            if len(pcm_bytes) < sample_rate * 4:  # 최소 1초 (float32 = 4바이트)
+            if len(pcm) < sample_rate:  # 최소 1초 데이터
                 await websocket.send_text(json.dumps({"error": "insufficient audio"}))
                 continue
 
-            result = await loop.run_in_executor(_executor, _analyze_worker, pcm_bytes, sample_rate)
+            result = await loop.run_in_executor(_executor, _analyze, pcm, sample_rate)
             await websocket.send_text(json.dumps(result))
 
     except WebSocketDisconnect:
