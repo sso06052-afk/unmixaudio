@@ -10,6 +10,7 @@ const BACKEND_WS_URL = 'wss://unmixaudio-production.up.railway.app/api/v1/ws/ana
 let analysisWs = null;
 let backendAvailable = false;
 let backendPermanentlyUnavailable = false;  // essentia 미설치 등 재연결 무의미한 경우
+let backendAccumSec = 0;  // 백엔드가 누적한 오디오 시간(초)
 
 function connectAnalysisWs() {
   try {
@@ -18,6 +19,7 @@ function connectAnalysisWs() {
 
     analysisWs.onopen = () => {
       backendAvailable = true;
+      backendAccumSec = 0;
       console.log('[backend] WebSocket connected');
     };
 
@@ -34,22 +36,17 @@ function connectAnalysisWs() {
           return;
         }
 
-        if (result.bpm !== undefined) {
-          lastBpm = Math.round(result.bpm * 10) / 10;
-        }
-        if (result.key !== undefined) {
-          const newKey = result.key;
-          if (stableKey === null) {
-            stableKey = newKey;
-          } else if (newKey !== stableKey) {
-            if (newKey === keyCandidate) {
-              keyCandidateCount++;
-              if (keyCandidateCount >= KEY_SWITCH_THRESHOLD) {
-                stableKey = newKey; keyCandidate = null; keyCandidateCount = 0;
-              }
-            } else { keyCandidate = newKey; keyCandidateCount = 1; }
-          } else { keyCandidate = null; keyCandidateCount = 0; }
-          if (result.keyStrength !== undefined) lastKeyConfidence = result.keyStrength;
+        if (result.accumSec !== undefined) backendAccumSec = result.accumSec;
+
+        // 15초 이상 누적된 결과만 신뢰 — 초반 불안정 결과 억제
+        if (backendAccumSec >= 15) {
+          if (result.bpm !== undefined) {
+            lastBpm = Math.round(result.bpm * 10) / 10;
+          }
+          if (result.key !== undefined) {
+            stableKey = result.key;
+            if (result.keyStrength !== undefined) lastKeyConfidence = result.keyStrength;
+          }
         }
       } catch (e) { console.warn('[backend] parse error', e); }
     };
@@ -259,6 +256,8 @@ function resetAccumulators() {
   if (sampleBufferHp && sampleBufferHp.length > 0) sampleBufferHp.fill(0);
   if (sampleBufferLp && sampleBufferLp.length > 0) sampleBufferLp.fill(0);
 
+  backendAccumSec = 0;
+
   // 백엔드 누적 버퍼도 리셋
   if (analysisWs && analysisWs.readyState === WebSocket.OPEN) {
     analysisWs.send(JSON.stringify({ type: 'reset' }));
@@ -406,8 +405,37 @@ function analyzeBufferChunk() {
   // ── 백엔드 Essentia 사용 가능하면 WebSocket으로 전송 ──────────
   if (backendAvailable) {
     sendToBackend(sampleBufferRaw, SAMPLE_RATE);
-    // 결과는 analysisWs.onmessage에서 비동기 수신
-    // 메시지 전송 후 바로 UI 업데이트 (이전 결과 표시)
+
+    // Local chroma 병렬 누적 — 백엔드 끊겨도 fallback 즉시 가능
+    const harmonicBufBg = computeHPSSHarmonic(sampleBufferRaw);
+    const chromaBg = extractChroma(harmonicBufBg);
+    if (chromaBg) {
+      for (let i = 0; i < 12; i++) {
+        cumulativeChroma[i] = (cumulativeChroma[i] * chromaCycleCount + chromaBg.chroma[i])
+                              / (chromaCycleCount + 1);
+      }
+      chromaCycleCount++;
+      for (let i = 0; i < 12; i++) bassTonicVotes[i] += chromaBg.bassChroma[i];
+      if (chromaCycleCount >= 5) {
+        let maxV = 0, maxI = -1;
+        for (let i = 0; i < 12; i++) {
+          if (bassTonicVotes[i] > maxV) { maxV = bassTonicVotes[i]; maxI = i; }
+        }
+        let total = 0;
+        for (let i = 0; i < 12; i++) total += bassTonicVotes[i];
+        stableBassTonic = (total > 0 && maxV >= total * 0.25) ? maxI : -1;
+      }
+
+      // 백엔드 누적 15초 미만(워밍업) 동안 로컬 key로 임시 표시
+      if (backendAccumSec < 15) {
+        const keyMatch = matchKeyProfile(cumulativeChroma, stableBassTonic);
+        if (keyMatch) {
+          stableKey = keyMatch.primary;
+          lastKeyConfidence = keyMatch.confidence;
+        }
+      }
+    }
+
     sendResults();
     return;
   }
