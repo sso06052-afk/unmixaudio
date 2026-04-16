@@ -58,17 +58,15 @@ def _analyze(pcm_bytes: bytes, sample_rate: int) -> dict:
         print(f"[essentia] KeyExtractor error: {e}", flush=True)
 
     try:
-        bpm_est = _es.PercivalBpmEstimator(
-            frameSize=int(1024), frameSizeOSS=int(2048),
-            hopSize=int(128), hopSizeOSS=int(128),
-            maxBPM=float(220), minBPM=float(50),
-            sampleRate=int(sample_rate),
+        rhythm = _es.RhythmExtractor2013(
+            maxTempo=220, minTempo=50,
+            method="multifeature",
         )
-        bpm = bpm_est(pcm)
+        bpm, _, _, _, _ = rhythm(pcm)
         result["bpm"] = float(bpm)
     except Exception as e:
         result["bpmError"] = str(e)
-        print(f"[essentia] BpmEstimator error: {e}", flush=True)
+        print(f"[essentia] RhythmExtractor error: {e}", flush=True)
 
     return result
 
