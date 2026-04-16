@@ -132,9 +132,12 @@ async def analyze_ws(websocket: WebSocket):
                 accum_len = 0
                 sample_rate_ref = sr
 
-            # 청크 누적 (최대 60초 유지 — 오래된 것부터 제거)
-            accum.append(chunk.copy())
-            accum_len += len(chunk)
+            # 롤링 버퍼에서 마지막 2초(새 오디오)만 추출해서 누적
+            # 10초 버퍼 전체를 누적하면 8초씩 겹쳐 artificial discontinuity 발생 → BPM 오염
+            new_samples = sr * 2
+            new_chunk = chunk[-new_samples:].copy()
+            accum.append(new_chunk)
+            accum_len += len(new_chunk)
             while accum_len > MAX_ACCUM_SAMPLES and accum:
                 removed = accum.pop(0)
                 accum_len -= len(removed)
