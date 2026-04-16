@@ -59,9 +59,9 @@ def _analyze(pcm_bytes: bytes, sample_rate: int) -> dict:
 
     try:
         bpm_est = _es.PercivalBpmEstimator(
-            frameSize=1024, frameSizeOSS=2048,
-            hopSize=128, hopSizeOSS=128,
-            maxBPM=220, minBPM=50,
+            frameSize=int(1024), frameSizeOSS=int(2048),
+            hopSize=int(128), hopSizeOSS=int(128),
+            maxBPM=float(220), minBPM=float(50),
             sampleRate=float(sample_rate),
         )
         bpm = bpm_est(pcm)
