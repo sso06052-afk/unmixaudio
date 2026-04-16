@@ -42,18 +42,6 @@ def _normalize_rms(pcm: np.ndarray, target_rms: float = 0.1) -> np.ndarray:
     return (pcm * (target_rms / rms)).astype(np.float32)
 
 
-def _high_pass(pcm: np.ndarray, sample_rate: int, cutoff_hz: float = 55.0) -> np.ndarray:
-    """단순 1차 IIR 하이패스 — 킥 드럼 fundamental(20-55Hz) 제거"""
-    rc = 1.0 / (2.0 * np.pi * cutoff_hz)
-    dt = 1.0 / sample_rate
-    alpha = rc / (rc + dt)
-    out = np.empty_like(pcm)
-    out[0] = pcm[0]
-    for i in range(1, len(pcm)):
-        out[i] = alpha * (out[i - 1] + pcm[i] - pcm[i - 1])
-    return out
-
-
 def _analyze(pcm: np.ndarray, sample_rate: int) -> dict:
     if not _load_essentia() or _es is None:
         return {"error": "essentia not available"}
@@ -63,22 +51,19 @@ def _analyze(pcm: np.ndarray, sample_rate: int) -> dict:
     # 전처리: RMS 정규화
     pcm_norm = _normalize_rms(pcm)
 
-    # Key 분석용: 킥 드럼 주파수 제거 후 분석
-    pcm_key = _high_pass(pcm_norm, sample_rate, cutoff_hz=55.0)
-
     try:
         ke = _es.KeyExtractor(
             averageDetuningCorrection=True,
-            frameSize=4096, hopSize=2048,          # hopSize 절반 → 프레임 2배 → 정밀도 향상
-            hpcpSize=36,                            # 12→36: 1/3 semitone 해상도
-            maxFrequency=3500, minFrequency=55,     # 킥 fundamental 제외
+            frameSize=4096, hopSize=2048,
+            hpcpSize=36,                            # 1/3 semitone 해상도
+            maxFrequency=3500, minFrequency=55,     # 킥 fundamental 제외 (KeyExtractor 내부에서 처리)
             maximumSpectralPeaks=60, pcpThreshold=0.2,
-            profileType="bgate",                    # trap/EDM 최적 — 이진 게이트 프로파일
+            profileType="bgate",
             sampleRate=float(sample_rate),
             spectralPeaksThreshold=0.0001, tuningFrequency=440.0,
             weightType="cosine", windowType="hann",
         )
-        key, scale, strength = ke(pcm_key)
+        key, scale, strength = ke(pcm_norm)
         result["key"] = f"{key} {scale.capitalize()}"
         result["keyRoot"] = key
         result["keyScale"] = scale
