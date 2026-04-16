@@ -96,6 +96,8 @@ async def analyze_ws(websocket: WebSocket):
     accum: list[np.ndarray] = []
     accum_len = 0
     sample_rate_ref = 0
+    cycle_count = 0  # 수신 사이클 수
+    ANALYZE_EVERY = 15  # 30초마다 분석 (2초 * 15 = 30초)
 
     try:
         while True:
@@ -144,8 +146,14 @@ async def analyze_ws(websocket: WebSocket):
                 removed = accum.pop(0)
                 accum_len -= len(removed)
 
+            cycle_count += 1
+            dur = accum_len / sr
+
+            # 10초 이상 쌓인 후 첫 분석, 이후 30초마다 — 분석 시간이 누적량에 비례하므로 매 사이클 금지
+            if not (cycle_count == 5 or cycle_count % ANALYZE_EVERY == 0):
+                continue
+
             pcm = np.concatenate(accum)
-            dur = len(pcm) / sr
             print(f"[ws] analyzing {len(pcm)} samples ({dur:.1f}s) @ {sr}Hz", flush=True)
 
             result = await loop.run_in_executor(_executor, _analyze, pcm, sr)
