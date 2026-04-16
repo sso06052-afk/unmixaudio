@@ -11,20 +11,29 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter()
 
-# essentia import — Linux(Railway)에서는 정상, macOS에서는 실패해도 괜찮음
-try:
-    import essentia.standard as _es  # type: ignore
-    _ESSENTIA_OK = True
-except Exception:
-    _es = None
-    _ESSENTIA_OK = False
+# essentia는 첫 분석 요청 시 lazy import — 서버 startup에 영향 없음
+_es = None
+_ESSENTIA_OK: bool | None = None  # None=미시도, True=성공, False=실패
 
 # CPU-heavy 분석을 스레드풀에서 실행 (이벤트 루프 비블로킹)
 _executor = ThreadPoolExecutor(max_workers=2)
 
 
+def _ensure_essentia() -> bool:
+    global _es, _ESSENTIA_OK
+    if _ESSENTIA_OK is not None:
+        return _ESSENTIA_OK
+    try:
+        import essentia.standard as _mod  # type: ignore
+        _es = _mod
+        _ESSENTIA_OK = True
+    except Exception:
+        _ESSENTIA_OK = False
+    return _ESSENTIA_OK
+
+
 def _analyze(pcm: np.ndarray, sample_rate: int) -> dict:
-    if not _ESSENTIA_OK or _es is None:
+    if not _ensure_essentia() or _es is None:
         return {"error": "essentia not available"}
 
     result: dict = {}
@@ -83,10 +92,7 @@ async def analyze_ws(websocket: WebSocket):
     """
     await websocket.accept()
 
-    if not _ESSENTIA_OK:
-        await websocket.send_text(json.dumps({"error": "essentia not available"}))
-        await websocket.close()
-        return
+    # essentia 가용성은 첫 _analyze 호출 시 확인
 
     loop = asyncio.get_event_loop()
     try:
