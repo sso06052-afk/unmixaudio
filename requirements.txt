@@ -8,4 +8,4 @@ noisereduce>=3.0.0
 numpy<2
 soundfile>=0.12.1
 replicate>=0.34.0
-# essentia>=2.1b6.dev1110  # 진단용 제거
+essentia>=2.1b6.dev1110
