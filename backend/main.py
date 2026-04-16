@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routers import stems
+from backend.routers import stems, analyze
 from backend.config import settings
 
 app = FastAPI(
@@ -29,6 +29,7 @@ app.add_middleware(
 )
 
 app.include_router(stems.router, prefix="/api/v1", tags=["stems"])
+app.include_router(analyze.router, prefix="/api/v1", tags=["analyze"])
 
 
 @app.get("/health")

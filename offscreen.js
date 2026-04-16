@@ -3,6 +3,88 @@
 // BPM: Mel Spectral Flux → Autocorrelation + Harmonic Comb + Perceptual Tempo Prior
 
 // ============================================================
+// Backend WebSocket (Essentia)
+// ============================================================
+// Railway 배포 후 아래 URL을 wss://your-service.up.railway.app/api/v1/ws/analyze 로 변경
+const BACKEND_WS_URL = 'wss://unmixaudio-production.up.railway.app/api/v1/ws/analyze';
+let analysisWs = null;
+let backendAvailable = false;
+let backendPermanentlyUnavailable = false;  // essentia 미설치 등 재연결 무의미한 경우
+
+function connectAnalysisWs() {
+  try {
+    analysisWs = new WebSocket(BACKEND_WS_URL);
+    analysisWs.binaryType = 'arraybuffer';
+
+    analysisWs.onopen = () => {
+      backendAvailable = true;
+      console.log('[backend] WebSocket connected');
+    };
+
+    analysisWs.onmessage = (event) => {
+      try {
+        const result = JSON.parse(event.data);
+        if (result.error) {
+          console.warn('[backend] error:', result.error);
+          // essentia 자체가 없으면 재연결해도 의미 없음 — backendAvailable = false 유지
+          if (result.error.includes('essentia not available')) {
+            backendAvailable = false;
+            backendPermanentlyUnavailable = true;
+          }
+          return;
+        }
+
+        if (result.bpm !== undefined) {
+          lastBpm = Math.round(result.bpm * 10) / 10;
+        }
+        if (result.key !== undefined) {
+          const newKey = result.key;
+          if (stableKey === null) {
+            stableKey = newKey;
+          } else if (newKey !== stableKey) {
+            if (newKey === keyCandidate) {
+              keyCandidateCount++;
+              if (keyCandidateCount >= KEY_SWITCH_THRESHOLD) {
+                stableKey = newKey; keyCandidate = null; keyCandidateCount = 0;
+              }
+            } else { keyCandidate = newKey; keyCandidateCount = 1; }
+          } else { keyCandidate = null; keyCandidateCount = 0; }
+          if (result.keyStrength !== undefined) lastKeyConfidence = result.keyStrength;
+        }
+      } catch (e) { console.warn('[backend] parse error', e); }
+    };
+
+    analysisWs.onclose = () => {
+      backendAvailable = false;
+      if (backendPermanentlyUnavailable) {
+        console.log('[backend] essentia unavailable — local DSP only');
+        return;
+      }
+      console.log('[backend] WebSocket closed — fallback to local DSP');
+      // 5초 후 재연결 시도
+      setTimeout(connectAnalysisWs, 5000);
+    };
+
+    analysisWs.onerror = () => {
+      backendAvailable = false;
+    };
+  } catch (e) {
+    backendAvailable = false;
+  }
+}
+
+function sendToBackend(pcmBuffer, sampleRate) {
+  if (!analysisWs || analysisWs.readyState !== WebSocket.OPEN) return false;
+  // 패킷: 4바이트 sampleRate (uint32 LE) + Float32LE PCM
+  const header = new Uint32Array([sampleRate]);
+  const packet = new Uint8Array(4 + pcmBuffer.byteLength);
+  packet.set(new Uint8Array(header.buffer), 0);
+  packet.set(new Uint8Array(pcmBuffer.buffer), 4);
+  analysisWs.send(packet.buffer);
+  return true;
+}
+
+// ============================================================
 // Audio Infrastructure
 // ============================================================
 let audioContext = null;
@@ -63,7 +145,8 @@ const TEMPO_PRIOR_SIGMA  = 0.85;  // 넓게 — 50~220 BPM 전 구간 0.5 이상
 let cumulativeChroma = new Float32Array(12);
 let chromaCycleCount = 0;
 
-
+let bassTonicVotes = new Int32Array(12);  // 누적 투표
+let stableBassTonic = -1;
 
 let keyCandidate = null;
 let keyCandidateCount = 0;
@@ -161,6 +244,8 @@ function stopRecording() {
 function resetAccumulators() {
   cumulativeChroma = new Float32Array(12);
   chromaCycleCount = 0;
+  bassTonicVotes = new Int32Array(12);
+  stableBassTonic = -1;
 
   keyCandidate = null;
   keyCandidateCount = 0;
@@ -178,6 +263,7 @@ function resetAccumulators() {
 async function startAnalysis(streamId) {
   try {
     stopAnalysis();
+    connectAnalysisWs();
 
     mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } }
@@ -242,6 +328,12 @@ async function startAnalysis(streamId) {
 }
 
 function stopAnalysis() {
+  if (analysisWs) {
+    analysisWs.onclose = null;  // 재연결 타이머 방지
+    analysisWs.close();
+    analysisWs = null;
+    backendAvailable = false;
+  }
   if (mediaRecorder && isRecording) mediaRecorder.stop();
   mediaRecorder = null;
   recordedChunks = [];
@@ -271,6 +363,8 @@ function stopAnalysis() {
 
   cumulativeChroma = new Float32Array(12);
   chromaCycleCount = 0;
+  bassTonicVotes = new Int32Array(12);
+  stableBassTonic = -1;
 
   keyCandidate = null;
   keyCandidateCount = 0;
@@ -304,7 +398,16 @@ function analyzeBufferChunk() {
 
   analysisCount++;
 
-  // ── Key ──
+  // ── 백엔드 Essentia 사용 가능하면 WebSocket으로 전송 ──────────
+  if (backendAvailable) {
+    sendToBackend(sampleBufferRaw, SAMPLE_RATE);
+    // 결과는 analysisWs.onmessage에서 비동기 수신
+    // 메시지 전송 후 바로 UI 업데이트 (이전 결과 표시)
+    sendResults();
+    return;
+  }
+
+  // ── Fallback: 로컬 DSP ──────────────────────────────────────
   // HPSS로 킥/스네어 퍼커시브 성분 제거 후 CQT chroma 추출
   const harmonicBuf = computeHPSSHarmonic(sampleBufferRaw);
   const chromaResult = extractChroma(harmonicBuf);
@@ -320,7 +423,20 @@ function analyzeBufferChunk() {
     const top = Array.from(cumulativeChroma).map((v,i)=>({n:KN[i],v})).sort((a,b)=>b.v-a.v);
     console.log('[chroma]', top.slice(0,4).map(x=>`${x.n}:${x.v.toFixed(3)}`).join(' '));
 
-    const keyMatch = matchKeyProfile(cumulativeChroma);
+    // bass tonic: CQT bass octave(A2~G#3) 누적 → 가장 강한 bin
+    for (let i = 0; i < 12; i++) bassTonicVotes[i] += chromaResult.bassChroma[i];
+    if (chromaCycleCount >= 5) {
+      let maxV = 0, maxI = -1;
+      for (let i = 0; i < 12; i++) {
+        if (bassTonicVotes[i] > maxV) { maxV = bassTonicVotes[i]; maxI = i; }
+      }
+      let total = 0;
+      for (let i = 0; i < 12; i++) total += bassTonicVotes[i];
+      stableBassTonic = (total > 0 && maxV >= total * 0.25) ? maxI : -1;
+    }
+    const KN2 = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    console.log('[bass-stable]', stableBassTonic >= 0 ? KN2[stableBassTonic] : 'none');
+    const keyMatch = matchKeyProfile(cumulativeChroma, stableBassTonic);
     if (keyMatch) {
       const newKey = keyMatch.primary;
       if (stableKey === null) {
@@ -364,29 +480,31 @@ function analyzeBufferChunk() {
   }
 
   if (analysisCount < 3) return;
+  sendResults();
+}
 
-  if (lastBpm || stableKey) {
-    const rmsLen = Math.min(2048, sampleBufferRaw.length);
-    let sumSq = 0;
-    for (let i = sampleBufferRaw.length - rmsLen; i < sampleBufferRaw.length; i++) {
-      sumSq += sampleBufferRaw[i] * sampleBufferRaw[i];
-    }
-    const rms = Math.sqrt(sumSq / rmsLen);
-
-    chrome.runtime.sendMessage({
-      type: 'analysis-result',
-      data: {
-        bpm: lastBpm,
-        key: stableKey,
-        secondKey: stableSecondKey,
-        confidence: lastKeyConfidence,
-        bpmChunks: bpmHistory.length,
-        keyWindows: chromaCycleCount,
-        rmsL: rms,
-        rmsR: rms * (0.85 + Math.random() * 0.3)
-      }
-    }).catch(() => {});
+function sendResults() {
+  if (!lastBpm && !stableKey) return;
+  const rmsLen = Math.min(2048, sampleBufferRaw.length);
+  let sumSq = 0;
+  for (let i = sampleBufferRaw.length - rmsLen; i < sampleBufferRaw.length; i++) {
+    sumSq += sampleBufferRaw[i] * sampleBufferRaw[i];
   }
+  const rms = Math.sqrt(sumSq / rmsLen);
+
+  chrome.runtime.sendMessage({
+    type: 'analysis-result',
+    data: {
+      bpm: lastBpm,
+      key: stableKey,
+      secondKey: stableSecondKey,
+      confidence: lastKeyConfidence,
+      bpmChunks: bpmHistory.length,
+      keyWindows: chromaCycleCount,
+      rmsL: rms,
+      rmsR: rms * (0.85 + Math.random() * 0.3)
+    }
+  }).catch(() => {});
 }
 
 // ============================================================
@@ -395,9 +513,10 @@ function analyzeBufferChunk() {
 function computeHPSSHarmonic(buffer) {
   const FFT_SIZE = 2048;
   const HOP_SIZE = 512;
-  const L_HARM   = 17;  // time-axis median window (sustained notes)
-  const L_PERC   = 17;  // freq-axis median window (wideband transients)
-  const half     = (L_HARM - 1) >> 1;
+  const L_HARM    = 11;  // time-axis median window (sustained notes)
+  const L_PERC    = 31;  // freq-axis median window — 킥 wideband transient 제거 강화
+  const halfH     = (L_HARM - 1) >> 1;
+  const halfP     = (L_PERC - 1) >> 1;
   const numBins  = FFT_SIZE / 2 + 1;
   const numFrames = Math.floor((buffer.length - FFT_SIZE) / HOP_SIZE);
   if (numFrames < L_HARM) return buffer;
@@ -428,21 +547,22 @@ function computeHPSSHarmonic(buffer) {
   // ── Median filters (insertion sort on fixed-size window — no GC) ──
   const harmMag = new Float32Array(numFrames * numBins);
   const percMag = new Float32Array(numFrames * numBins);
-  const win     = new Float32Array(L_HARM);
+  const winH = new Float32Array(L_HARM);
+  const winP = new Float32Array(L_PERC);
 
   // Horizontal median → harmonic (sustained across time)
   for (let b = 0; b < numBins; b++) {
     for (let f = 0; f < numFrames; f++) {
       for (let k = 0; k < L_HARM; k++) {
-        const ff = Math.max(0, Math.min(numFrames - 1, f - half + k));
-        win[k] = mag[ff * numBins + b];
+        const ff = Math.max(0, Math.min(numFrames - 1, f - halfH + k));
+        winH[k] = mag[ff * numBins + b];
       }
       for (let i = 1; i < L_HARM; i++) {
-        const v = win[i]; let j = i - 1;
-        while (j >= 0 && win[j] > v) { win[j + 1] = win[j]; j--; }
-        win[j + 1] = v;
+        const v = winH[i]; let j = i - 1;
+        while (j >= 0 && winH[j] > v) { winH[j + 1] = winH[j]; j--; }
+        winH[j + 1] = v;
       }
-      harmMag[f * numBins + b] = win[half];
+      harmMag[f * numBins + b] = winH[halfH];
     }
   }
 
@@ -451,15 +571,15 @@ function computeHPSSHarmonic(buffer) {
     const base = f * numBins;
     for (let b = 0; b < numBins; b++) {
       for (let k = 0; k < L_PERC; k++) {
-        const bb = Math.max(0, Math.min(numBins - 1, b - half + k));
-        win[k] = mag[base + bb];
+        const bb = Math.max(0, Math.min(numBins - 1, b - halfP + k));
+        winP[k] = mag[base + bb];
       }
       for (let i = 1; i < L_PERC; i++) {
-        const v = win[i]; let j = i - 1;
-        while (j >= 0 && win[j] > v) { win[j + 1] = win[j]; j--; }
-        win[j + 1] = v;
+        const v = winP[i]; let j = i - 1;
+        while (j >= 0 && winP[j] > v) { winP[j + 1] = winP[j]; j--; }
+        winP[j + 1] = v;
       }
-      percMag[base + b] = win[half];
+      percMag[base + b] = winP[halfP];
     }
   }
 
@@ -513,17 +633,19 @@ function extractChroma(rawBuffer) {
   if (numWindows <= 0 || !cqtKernels) return null;
 
   const totalChroma = new Float32Array(12);
+  const totalBassChroma = new Float32Array(12);  // bass octave only (MIDI 45-56)
   let validWindows = 0;
 
   for (let w = 0; w < numWindows; w++) {
     const start = w * hopSize;
     const windowChunk = rawBuffer.subarray(start, start + KEY_BUFFER_SIZE);
-    const chroma = extractCQTChroma(windowChunk, cqtKernels);
 
     let windowEnergy = 0;
     for (let i = 0; i < windowChunk.length; i++) windowEnergy += windowChunk[i] * windowChunk[i];
     windowEnergy /= windowChunk.length;
     if (windowEnergy < ENERGY_FLOOR * ENERGY_FLOOR) continue;
+
+    const { chroma, bassChroma } = extractCQTChroma(windowChunk, cqtKernels);
 
     let chromaSum = 0;
     for (let i = 0; i < 12; i++) chromaSum += chroma[i];
@@ -545,7 +667,10 @@ function extractChroma(rawBuffer) {
         if (chroma[i] / norm > maxNorm) maxNorm = chroma[i] / norm;
       }
       if (maxNorm >= 0.35) {
-        for (let i = 0; i < 12; i++) totalChroma[i] += chroma[i] / norm;
+        for (let i = 0; i < 12; i++) {
+          totalChroma[i] += chroma[i] / norm;
+          totalBassChroma[i] += bassChroma[i];
+        }
         validWindows++;
       }
     }
@@ -554,10 +679,10 @@ function extractChroma(rawBuffer) {
   if (validWindows < 2) return null;
   const avgChroma = new Float32Array(12);
   for (let i = 0; i < 12; i++) avgChroma[i] = totalChroma[i] / validWindows;
-  return { chroma: avgChroma, validWindows };
+  return { chroma: avgChroma, bassChroma: totalBassChroma, validWindows };
 }
 
-function matchKeyProfile(chroma) {
+function matchKeyProfile(chroma, bassTonic) {
   let bestCorr = -Infinity, bestKey = '';
   let secondCorr = -Infinity, secondKey = '';
 
@@ -565,23 +690,26 @@ function matchKeyProfile(chroma) {
     const rotated = new Float32Array(12);
     for (let i = 0; i < 12; i++) rotated[i] = chroma[(i + shift) % 12];
 
-    // 4-profile ensemble: max per scale (bgate 0.911 on A#m, edma/kk/shaath as fallback)
     const candidates = [
       [Math.max(
          pearsonCorrelation(rotated, BGATE_MAJOR),
          pearsonCorrelation(rotated, KK_MAJOR),
          pearsonCorrelation(rotated, EDMA_MAJOR),
          pearsonCorrelation(rotated, SHAATH_MAJOR)
-       ), KEY_NAMES[shift] + ' Major'],
+       ), KEY_NAMES[shift] + ' Major', shift],
       [Math.max(
          pearsonCorrelation(rotated, BGATE_MINOR),
          pearsonCorrelation(rotated, KK_MINOR),
          pearsonCorrelation(rotated, EDMA_MINOR),
          pearsonCorrelation(rotated, SHAATH_MINOR)
-       ), KEY_NAMES[shift] + ' Minor'],
+       ), KEY_NAMES[shift] + ' Minor', shift],
     ];
 
-    for (const [corr, label] of candidates) {
+    for (let [corr, label, rootShift] of candidates) {
+      // Bass tonic constraint: 근음이 bassTonic과 다르면 페널티
+      if (bassTonic >= 0 && rootShift !== bassTonic) {
+        corr *= 0.7;
+      }
       if (corr > bestCorr) {
         secondCorr = bestCorr; secondKey = bestKey;
         bestCorr = corr; bestKey = label;
@@ -596,36 +724,54 @@ function matchKeyProfile(chroma) {
 }
 
 // ============================================================
-// Bass Tonic Detection
+// Bass Tonic Detection — HPS (Harmonic Product Spectrum)
+// 80~200Hz 대역에서 지배적 베이스 근음 추출
+// kick(60-80Hz) 제외, 베이스/808 fundamental(80-200Hz) 포함
 // ============================================================
-function detectBassTonic(lpBuffer) {
-  const analysisLen = Math.min(Math.floor(SAMPLE_RATE), lpBuffer.length);
-  if (analysisLen < 4000) return -1;
+function detectBassTonic(rawBuffer) {
+  const FFT_SIZE = 8192;
+  const useLen = Math.min(rawBuffer.length, FFT_SIZE);
+  if (useLen < FFT_SIZE) return -1;
 
-  const minPeriod = Math.floor(SAMPLE_RATE / 160);  // up to 160 Hz (A#2 = 116Hz, covers 808 2nd octave)
-  const maxPeriod = Math.min(Math.ceil(SAMPLE_RATE / 40), Math.floor(analysisLen / 2));
+  const re = new Float32Array(FFT_SIZE);
+  const im = new Float32Array(FFT_SIZE);
 
-  let bestCorr = 0, bestPeriod = -1;
-  const offset = Math.floor((lpBuffer.length - analysisLen) / 2);
+  // 중앙 구간 FFT (최신 데이터)
+  const offset = Math.floor((rawBuffer.length - FFT_SIZE) / 2);
+  for (let i = 0; i < FFT_SIZE; i++) {
+    const phase = 2 * Math.PI * i / (FFT_SIZE - 1);
+    re[i] = rawBuffer[offset + i] * (0.5 * (1 - Math.cos(phase)));
+  }
+  fftInPlace(re, im, FFT_SIZE);
 
-  for (let lag = minPeriod; lag <= maxPeriod; lag++) {
-    const len = analysisLen - lag;
-    let corr = 0;
-    let zeroLagLocal = 0;
-    for (let i = 0; i < len; i++) {
-      corr += lpBuffer[offset + i] * lpBuffer[offset + i + lag];
-      zeroLagLocal += lpBuffer[offset + i] * lpBuffer[offset + i];
-    }
-    if (zeroLagLocal > 0) corr /= zeroLagLocal;
-    if (corr > bestCorr) { bestCorr = corr; bestPeriod = lag; }
+  // 파워 스펙트럼
+  const power = new Float32Array(FFT_SIZE / 2);
+  for (let i = 0; i < FFT_SIZE / 2; i++) {
+    power[i] = re[i] * re[i] + im[i] * im[i];
   }
 
-  if (bestCorr < 0.3 || bestPeriod < 0) return -1;
+  // HPS: 80~200Hz 대역의 bin 범위
+  const binHz = SAMPLE_RATE / FFT_SIZE;
+  const loKick = Math.floor(80 / binHz);   // 킥 컷
+  const hiBass = Math.floor(200 / binHz);  // 베이스 상한
 
-  const freq = SAMPLE_RATE / bestPeriod;
+  // HPS (harmonic product): power[k] * power[2k] * power[3k]
+  let bestBin = -1, bestHPS = 0;
+  for (let k = loKick; k <= hiBass; k++) {
+    const k2 = k * 2, k3 = k * 3;
+    if (k3 >= FFT_SIZE / 2) continue;
+    const hps = power[k] * power[k2] * power[k3];
+    if (hps > bestHPS) { bestHPS = hps; bestBin = k; }
+  }
+
+  if (bestBin < 0) return -1;
+
+  const freq = bestBin * binHz;
   const midi = Math.round(69 + 12 * Math.log2(freq / 440));
-  if (midi < 28 || midi > 56) return -1;  // covers A#1(34)~A#3(58), exclude above 56
-  return midi % 12;
+  if (midi < 28 || midi > 60) return -1;
+  const pitchClass = midi % 12;
+  console.log('[bass-dbg] freq:', freq.toFixed(1), 'Hz → midi:', midi, '→ note:', ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][pitchClass]);
+  return pitchClass;
 }
 
 // ============================================================
@@ -783,6 +929,7 @@ function buildCQTKernels(sampleRate, numSamples) {
 
 function extractCQTChroma(buffer, kernels) {
   const chroma = new Float32Array(12);
+  const bassChroma = new Float32Array(12);  // MIDI 45-56 (A2~G#3) 전용
   const binEnergies = new Float32Array(CQT_NUM_BINS);
   for (let k = 0; k < CQT_NUM_BINS; k++) {
     const kernel = kernels[k];
@@ -801,12 +948,14 @@ function extractCQTChroma(buffer, kernels) {
   for (let k = 0; k < CQT_NUM_BINS; k++) {
     const midiNote = CQT_MIN_MIDI + Math.floor(k / binsPerSemitone);
     const pitchClassIdx = midiNote % 12;
-    const octave = Math.floor(midiNote / 12);
-    // 저음역 부스트: 베이스/808 루트 노트 강조 (킥은 CQT_MIN_MIDI=45로 이미 제외)
-    const octaveWeight = 2.0 * Math.pow(0.75, octave - 4);
-    chroma[pitchClassIdx] += binEnergies[k] * octaveWeight;
+    // 전체 chroma: 플랫 가중치 (모든 옥타브 동등)
+    chroma[pitchClassIdx] += binEnergies[k];
+    // bass chroma: MIDI 45-56 (A2=110Hz ~ G#3=207Hz) 구간만
+    if (midiNote >= 45 && midiNote <= 56) {
+      bassChroma[pitchClassIdx] += binEnergies[k];
+    }
   }
-  return chroma;
+  return { chroma, bassChroma };
 }
 
 function pearsonCorrelation(x, y) {
