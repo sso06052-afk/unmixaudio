@@ -297,7 +297,7 @@ const POLL_MAX_RETRIES = 60; // 3분 (3s × 60) 초과 시 타임아웃
 
 // 프로덕션 배포 시 실제 서버 URL로 교체
 // chrome.storage.sync으로 사용자 설정 가능하도록 구조화
-const API_BASE_DEFAULT = 'http://localhost:8000';
+const API_BASE_DEFAULT = 'https://unmixaudio-production.up.railway.app';
 let API_BASE = API_BASE_DEFAULT;
 chrome.storage.sync.get(['apiBase'], (d) => {
   if (d.apiBase) API_BASE = d.apiBase;

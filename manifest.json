@@ -13,7 +13,7 @@
   ],
   "host_permissions": [
     "https://www.youtube.com/*",
-    "http://localhost:8000/*",
+    "https://unmixaudio-production.up.railway.app/*",
     "https://*.supabase.co/*"
   ],
   "content_scripts": [
