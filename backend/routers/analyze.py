@@ -110,6 +110,8 @@ async def analyze_ws(websocket: WebSocket):
                         accum_len = 0
                         sample_rate_ref = 0
                         print("[ws] accum reset", flush=True)
+                    elif cmd.get("type") == "ping":
+                        pass  # keepalive, 응답 불필요
                 except Exception:
                     pass
                 continue
@@ -149,7 +151,8 @@ async def analyze_ws(websocket: WebSocket):
             result = await loop.run_in_executor(_executor, _analyze, pcm, sr)
             result["accumSec"] = round(dur, 1)
             print(f"[ws] result: {result}", flush=True)
-            await websocket.send_text(json.dumps(result))
+            if websocket.client_state.value == 1:  # CONNECTED
+                await websocket.send_text(json.dumps(result))
 
     except WebSocketDisconnect:
         print("[ws] disconnected", flush=True)

@@ -21,6 +21,13 @@ function connectAnalysisWs() {
       backendAvailable = true;
       backendAccumSec = 0;
       console.log('[backend] WebSocket connected');
+      // Railway 프록시 idle timeout 방지 — 30초마다 ping
+      if (analysisWs._pingTimer) clearInterval(analysisWs._pingTimer);
+      analysisWs._pingTimer = setInterval(() => {
+        if (analysisWs && analysisWs.readyState === WebSocket.OPEN) {
+          analysisWs.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 30000);
     };
 
     analysisWs.onmessage = (event) => {
@@ -53,12 +60,12 @@ function connectAnalysisWs() {
 
     analysisWs.onclose = () => {
       backendAvailable = false;
+      if (analysisWs._pingTimer) { clearInterval(analysisWs._pingTimer); analysisWs._pingTimer = null; }
       if (backendPermanentlyUnavailable) {
         console.log('[backend] essentia unavailable — local DSP only');
         return;
       }
-      console.log('[backend] WebSocket closed — fallback to local DSP');
-      // 5초 후 재연결 시도
+      console.log('[backend] WebSocket closed — reconnecting in 5s');
       setTimeout(connectAnalysisWs, 5000);
     };
 
