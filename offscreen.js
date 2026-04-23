@@ -1,170 +1,92 @@
 // offscreen.js — Production Audio Analyzer
-// Key: Backend WebSocket (Railway FastAPI, Python Essentia 3-profile majority vote) [primary]
-//      + Essentia WASM (sandbox iframe, KeyExtractor bgate/hpcpSize=36) [BPM source + key fallback]
-// BPM: Essentia WASM (sandbox iframe, RhythmExtractor2013 multifeature) + Mel Spectral Flux fallback
+// Key: CQT HPCP + Krumhansl-Kessler / EDMA profile matching (max ensemble)
+// BPM: Mel Spectral Flux → Autocorrelation + Harmonic Comb + Perceptual Tempo Prior
 
 // ============================================================
-// Backend WebSocket 설정
-// wss 엔드포인트: Python Essentia 3-profile 다수결 + bass tonic override
+// Backend WebSocket (Essentia)
 // ============================================================
+// Railway 배포 후 아래 URL을 wss://your-service.up.railway.app/api/v1/ws/analyze 로 변경
 const BACKEND_WS_URL = 'wss://unmixaudio-production.up.railway.app/api/v1/ws/analyze';
-let backendWs = null;
+let analysisWs = null;
+let backendAvailable = false;
+let backendPermanentlyUnavailable = false;  // essentia 미설치 등 재연결 무의미한 경우
+let backendAccumSec = 0;  // 백엔드가 누적한 오디오 시간(초)
 
-function connectBackendWs() {
+function connectAnalysisWs() {
   try {
-    backendWs = new WebSocket(BACKEND_WS_URL);
-    backendWs.binaryType = 'arraybuffer';
+    analysisWs = new WebSocket(BACKEND_WS_URL);
+    analysisWs.binaryType = 'arraybuffer';
 
-    backendWs.onopen = () => {
-      console.log('[backend-ws] 연결 성공:', BACKEND_WS_URL);
+    analysisWs.onopen = () => {
+      backendAvailable = true;
+      backendAccumSec = 0;
+      console.log('[backend] WebSocket connected');
+      // Railway 프록시 idle timeout 방지 — 30초마다 ping
+      if (analysisWs._pingTimer) clearInterval(analysisWs._pingTimer);
+      analysisWs._pingTimer = setInterval(() => {
+        if (analysisWs && analysisWs.readyState === WebSocket.OPEN) {
+          analysisWs.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 30000);
     };
 
-    backendWs.onmessage = (event) => {
+    analysisWs.onmessage = (event) => {
       try {
         const result = JSON.parse(event.data);
-
-        if (result.key) {
-          // 백엔드 Python Essentia key가 WASM keyVotes 방식을 완전히 대체
-          stableKey = result.key;
-          lastKeyConfidence = result.keyStrength || 0.5;
-          essentiaHasRun = true;  // 이후 WASM BPM 업데이트가 UI로 흐르도록 gate 해제
-          console.log(`[backend-ws] key=${result.key} strength=${result.keyStrength} bassTonic=${result.bassTonic}`);
-          sendResults();
+        if (result.error) {
+          console.warn('[backend] error:', result.error);
+          // essentia 자체가 없으면 재연결해도 의미 없음 — backendAvailable = false 유지
+          if (result.error.includes('essentia not available')) {
+            backendAvailable = false;
+            backendPermanentlyUnavailable = true;
+          }
+          return;
         }
 
-        if (result.keyError) {
-          console.warn('[backend-ws] keyError:', result.keyError);
+        if (result.accumSec !== undefined) backendAccumSec = result.accumSec;
+
+        // 15초 이상 누적된 결과만 신뢰 — 초반 불안정 결과 억제
+        if (backendAccumSec >= 15) {
+          if (result.bpm !== undefined) {
+            lastBpm = Math.round(result.bpm * 10) / 10;
+          }
+          if (result.key !== undefined) {
+            stableKey = result.key;
+            if (result.keyStrength !== undefined) lastKeyConfidence = result.keyStrength;
+          }
         }
-        if (result.bpmError) {
-          console.warn('[backend-ws] bpmError:', result.bpmError);
-        }
-      } catch (e) {
-        console.warn('[backend-ws] 메시지 파싱 실패:', e.message);
+      } catch (e) { console.warn('[backend] parse error', e); }
+    };
+
+    analysisWs.onclose = () => {
+      backendAvailable = false;
+      if (analysisWs._pingTimer) { clearInterval(analysisWs._pingTimer); analysisWs._pingTimer = null; }
+      if (backendPermanentlyUnavailable) {
+        console.log('[backend] essentia unavailable — local DSP only');
+        return;
       }
+      console.log('[backend] WebSocket closed — reconnecting in 5s');
+      setTimeout(connectAnalysisWs, 5000);
     };
 
-    backendWs.onerror = (err) => {
-      console.warn('[backend-ws] 연결 오류:', err);
-      backendWs = null;
-    };
-
-    backendWs.onclose = () => {
-      console.warn('[backend-ws] 연결 종료');
-      backendWs = null;
+    analysisWs.onerror = () => {
+      backendAvailable = false;
     };
   } catch (e) {
-    console.warn('[backend-ws] connectBackendWs 실패:', e.message);
-    backendWs = null;
+    backendAvailable = false;
   }
 }
 
-function sendPcmToBackend() {
-  if (!backendWs || backendWs.readyState !== WebSocket.OPEN) return;
-  if (accumLen === 0) return;
-
-  try {
-    // accumChunks 전체를 하나의 Float32Array로 직렬화
-    const pcm = new Float32Array(accumLen);
-    let offset = 0;
-    for (const chunk of accumChunks) {
-      pcm.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    // 헤더: 4바이트 Little-Endian uint32 sampleRate + Float32Array PCM
-    const headerBytes = 4;
-    const buffer = new ArrayBuffer(headerBytes + pcm.byteLength);
-    const headerView = new DataView(buffer);
-    headerView.setUint32(0, SAMPLE_RATE, true);  // Little-Endian
-    new Float32Array(buffer, headerBytes).set(pcm);
-
-    backendWs.send(buffer);
-    console.log(`[backend-ws] PCM 전송 — samples=${pcm.length} sampleRate=${SAMPLE_RATE}`);
-  } catch (e) {
-    console.warn('[backend-ws] PCM 전송 실패:', e.message);
-  }
+function sendToBackend(pcmBuffer, sampleRate) {
+  if (!analysisWs || analysisWs.readyState !== WebSocket.OPEN) return false;
+  // 패킷: 4바이트 sampleRate (uint32 LE) + Float32LE PCM
+  const header = new Uint32Array([sampleRate]);
+  const packet = new Uint8Array(4 + pcmBuffer.byteLength);
+  packet.set(new Uint8Array(header.buffer), 0);
+  packet.set(new Uint8Array(pcmBuffer.buffer), 4);
+  analysisWs.send(packet.buffer);
+  return true;
 }
-
-// ============================================================
-// Essentia Sandbox 통신 (sandbox.html iframe → postMessage)
-// MV3 eval 제한 우회: Emscripten glue는 sandbox CSP에서만 동작
-// ============================================================
-let essentiaReady = false;
-let essentiaHasRun = false;
-let isEssentiaRunning = false;
-
-function getSandboxFrame() {
-  return document.getElementById('essentia-sandbox');
-}
-
-function sendToSandbox(rawBuffer, hpBuffer, sampleRate, bassTonic) {
-  const frame = getSandboxFrame();
-  if (!frame || !essentiaReady || isEssentiaRunning) return;
-  isEssentiaRunning = true;
-  console.log(`[sandbox-send] sampleRate=${sampleRate} bufLen=${rawBuffer.length} dur=${(rawBuffer.length/sampleRate).toFixed(1)}s bassTonic=${bassTonic}`);
-  const rawCopy = rawBuffer.slice();
-  const hpCopy  = hpBuffer.slice();
-  frame.contentWindow.postMessage(
-    { type: 'analyze', rawBuffer: rawCopy.buffer, hpBuffer: hpCopy.buffer, sampleRate, bassTonic },
-    '*',
-    [rawCopy.buffer, hpCopy.buffer]
-  );
-}
-
-function handleEssentiaResult(result) {
-  isEssentiaRunning = false;
-  if (!result) return;
-  if (!essentiaHasRun) {
-    // 첫 Essentia 결과 시점에 local DSP 이력 초기화 — 두 소스 혼합 방지
-    bpmHistory = [];
-    keyVotes = {};
-  }
-  essentiaHasRun = true;
-
-  if (!result.keyError && result.key && result.scale) {
-    const key = `${result.key} ${result.scale.charAt(0).toUpperCase() + result.scale.slice(1)}`;
-    keyVotes[key] = (keyVotes[key] || 0) + (result.strength || 0.5);
-    let maxV = 0, bestKey = null, secondV = 0, secondKey = null;
-    for (const [k, v] of Object.entries(keyVotes)) {
-      if (v > maxV) { secondV = maxV; secondKey = bestKey; maxV = v; bestKey = k; }
-      else if (v > secondV) { secondV = v; secondKey = k; }
-    }
-    if (bestKey) {
-      stableKey = bestKey;
-      stableSecondKey = secondKey;
-      lastKeyConfidence = result.strength || 0.5;
-    }
-  }
-
-  if (!result.bpmError && result.bpm) {
-    bpmHistory.push(result.bpm);
-    if (bpmHistory.length > BPM_HISTORY_MAX) bpmHistory.shift();
-    if (bpmHistory.length >= 1) {
-      const sorted = bpmHistory.slice().sort((a, b) => a - b);
-      const medianBpm = Math.round(sorted[Math.floor(sorted.length / 2)]);  // 정수 반올림
-      // deadband: 현재값에서 ±1 이하 변화는 무시 (2-3 튀는 표시 안정화)
-      if (!lastBpm || Math.abs(medianBpm - lastBpm) >= 2) lastBpm = medianBpm;
-    }
-    console.log(`[essentia] BPM=${result.bpm.toFixed(1)} Key=${result.key} ${result.scale} hist=${bpmHistory.length}`);
-  }
-
-  sendResults();
-}
-
-// sandbox iframe → offscreen 메시지 수신
-window.addEventListener('message', (event) => {
-  const msg = event.data;
-  if (!msg || !msg.type) return;
-  if (msg.type === 'sandbox-ready') {
-    essentiaReady = true;
-    console.log('[sandbox] Essentia WASM 준비 완료');
-  } else if (msg.type === 'analysis-result') {
-    handleEssentiaResult(msg.result);
-  } else if (msg.type === 'sandbox-error') {
-    isEssentiaRunning = false;
-    console.error('[sandbox] 오류:', msg.error);
-  }
-});
 
 // ============================================================
 // Audio Infrastructure
@@ -180,12 +102,6 @@ const BUFFER_DUR_SEC = 10;
 let sampleBufferRaw = new Float32Array(0);
 let sampleBufferHp = new Float32Array(0);
 let sampleBufferLp = new Float32Array(0);
-
-// 곡 전체 오디오 누적 버퍼 (백엔드 방식 — 2초씩 추가, 최대 5분)
-// 링버퍼(10s 반복)가 아닌 실제 누적으로 분석 안정성 대폭 향상
-const MAX_ACCUM_SAMPLES = 48000 * 300;  // 5분
-let accumChunks = [];   // Float32Array 조각 배열
-let accumLen = 0;       // 총 누적 샘플 수
 
 // ============================================================
 // Key Detection Constants
@@ -224,7 +140,7 @@ let melFilterBank = null;
 
 const BPM_MIN = 50;
 const BPM_MAX = 220;
-const TEMPO_PRIOR_CENTER = 95;    // hip-hop/trap(70-100BPM) 중심 — 128 prior가 151BPM을 90BPM보다 선호하던 편향 수정
+const TEMPO_PRIOR_CENTER = 128;   // house/techno/trap 커버하는 중심
 const TEMPO_PRIOR_SIGMA  = 0.85;  // 넓게 — 50~220 BPM 전 구간 0.5 이상 유지
 
 // ============================================================
@@ -248,7 +164,6 @@ let stableSecondKey = null;
 let lastKeyConfidence = 0;
 let lastBpm = null;
 let analysisCount = 0;
-let keyVotes = {};  // Key strength-weighted accumulation { 'A Minor': 2.3, ... }
 
 let _bpmRealBuf = null;
 let _bpmImagBuf = null;
@@ -348,15 +263,18 @@ function resetAccumulators() {
   if (sampleBufferHp && sampleBufferHp.length > 0) sampleBufferHp.fill(0);
   if (sampleBufferLp && sampleBufferLp.length > 0) sampleBufferLp.fill(0);
 
-  keyVotes = {};
-  essentiaHasRun = false;
-  accumChunks = [];
-  accumLen = 0;
+  backendAccumSec = 0;
+
+  // 백엔드 누적 버퍼도 리셋
+  if (analysisWs && analysisWs.readyState === WebSocket.OPEN) {
+    analysisWs.send(JSON.stringify({ type: 'reset' }));
+  }
 }
 
 async function startAnalysis(streamId) {
   try {
     stopAnalysis();
+    connectAnalysisWs();
 
     mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } }
@@ -398,23 +316,10 @@ async function startAnalysis(streamId) {
       sampleBufferRaw.set(new Float32Array(event.data.raw));
       sampleBufferHp.set(new Float32Array(event.data.hp));
       sampleBufferLp.set(new Float32Array(event.data.lp));
-
-      // 누적 버퍼: 링버퍼의 마지막 2초(신규 오디오)만 추가
-      const newSamples = Math.floor(SAMPLE_RATE * 2);
-      const newChunk = sampleBufferRaw.slice(sampleBufferRaw.length - newSamples);
-      accumChunks.push(newChunk);
-      accumLen += newChunk.length;
-      // 5분 초과 시 앞부분 제거
-      while (accumLen > MAX_ACCUM_SAMPLES && accumChunks.length > 0) {
-        accumLen -= accumChunks.shift().length;
-      }
     };
 
     const source = audioContext.createMediaStreamSource(mediaStream);
     source.connect(audioWorkletNode);
-
-    // 백엔드 WebSocket 연결 (key 고정밀 분석용)
-    if (!backendWs) connectBackendWs();
 
     analysisInterval = setInterval(analyzeBufferChunk, 2000);
 
@@ -434,6 +339,12 @@ async function startAnalysis(streamId) {
 }
 
 function stopAnalysis() {
+  if (analysisWs) {
+    analysisWs.onclose = null;  // 재연결 타이머 방지
+    analysisWs.close();
+    analysisWs = null;
+    backendAvailable = false;
+  }
   if (mediaRecorder && isRecording) mediaRecorder.stop();
   mediaRecorder = null;
   recordedChunks = [];
@@ -452,9 +363,6 @@ function stopAnalysis() {
   if (analysisInterval) clearInterval(analysisInterval);
   if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
   if (audioContext) audioContext.close().catch(() => {});
-
-  // 백엔드 WebSocket 종료
-  if (backendWs) { backendWs.close(); backendWs = null; }
 
   analysisInterval = null;
   mediaStream = null;
@@ -484,19 +392,11 @@ function stopAnalysis() {
   _bpmMelBuf = null;
   _bpmPrevMelBuf = null;
   _bpmHannBuf = null;
-
-  keyVotes = {};
-  essentiaHasRun = false;
-  accumChunks = [];
-  accumLen = 0;
 }
 
 // ============================================================
 // Analysis Pipeline
 // ============================================================
-// Essentia.js 분석 주기: 5사이클 = 10초마다
-const ESSENTIA_EVERY = 5;
-
 function analyzeBufferChunk() {
   if (sampleBufferRaw.length === 0) return;
 
@@ -509,58 +409,117 @@ function analyzeBufferChunk() {
 
   analysisCount++;
 
-  // ── Essentia sandbox 고정밀 분석 (10초마다, 누적 버퍼 사용) ──
-  if (essentiaReady && !isEssentiaRunning && analysisCount % ESSENTIA_EVERY === 0 && accumLen > 0) {
-    const dur = accumLen / SAMPLE_RATE;
-    if (dur >= 13) {  // TempoCNN 최소 256 frames 보장 (10s→214frames, 13s→267frames)
-      // BPM용: 최근 60초 raw 오디오 (TempoCNN 입력)
-      const MAX_BPM_SAMPLES = Math.floor(SAMPLE_RATE * 60);
-      let flat;
-      if (accumLen <= MAX_BPM_SAMPLES) {
-        flat = new Float32Array(accumLen);
-        let offset = 0;
-        for (const chunk of accumChunks) { flat.set(chunk, offset); offset += chunk.length; }
-      } else {
-        flat = new Float32Array(MAX_BPM_SAMPLES);
-        let remaining = MAX_BPM_SAMPLES;
-        let writePos = MAX_BPM_SAMPLES;
-        for (let i = accumChunks.length - 1; i >= 0 && remaining > 0; i--) {
-          const chunk = accumChunks[i];
-          const take = Math.min(chunk.length, remaining);
-          writePos -= take;
-          flat.set(chunk.subarray(chunk.length - take), writePos);
-          remaining -= take;
+  // ── 백엔드 Essentia 사용 가능하면 WebSocket으로 전송 ──────────
+  if (backendAvailable) {
+    sendToBackend(sampleBufferRaw, SAMPLE_RATE);
+
+    // Local chroma 병렬 누적 — 백엔드 끊겨도 fallback 즉시 가능
+    const harmonicBufBg = computeHPSSHarmonic(sampleBufferRaw);
+    const chromaBg = extractChroma(harmonicBufBg);
+    if (chromaBg) {
+      for (let i = 0; i < 12; i++) {
+        cumulativeChroma[i] = (cumulativeChroma[i] * chromaCycleCount + chromaBg.chroma[i])
+                              / (chromaCycleCount + 1);
+      }
+      chromaCycleCount++;
+      for (let i = 0; i < 12; i++) bassTonicVotes[i] += chromaBg.bassChroma[i];
+      if (chromaCycleCount >= 5) {
+        let maxV = 0, maxI = -1;
+        for (let i = 0; i < 12; i++) {
+          if (bassTonicVotes[i] > maxV) { maxV = bassTonicVotes[i]; maxI = i; }
+        }
+        let total = 0;
+        for (let i = 0; i < 12; i++) total += bassTonicVotes[i];
+        stableBassTonic = (total > 0 && maxV >= total * 0.25) ? maxI : -1;
+      }
+
+      // 백엔드 누적 15초 미만(워밍업) 동안 로컬 key로 임시 표시
+      if (backendAccumSec < 15) {
+        const keyMatch = matchKeyProfile(cumulativeChroma, stableBassTonic);
+        if (keyMatch) {
+          stableKey = keyMatch.primary;
+          lastKeyConfidence = keyMatch.confidence;
         }
       }
+    }
 
-      // Key용: 최근 30초에 HPSS → harmonic 성분만 추출 (킥/808 제거)
-      // 15초→30초: 더 많은 데이터, 연산 ~1.5초로 허용 범위
-      const MAX_KEY_SAMPLES = Math.floor(SAMPLE_RATE * 30);
-      const keySource = flat.length > MAX_KEY_SAMPLES
-        ? flat.subarray(flat.length - MAX_KEY_SAMPLES)
-        : flat;
-      const harmonicBuf = computeHPSSHarmonic(keySource);
+    sendResults();
+    return;
+  }
 
-      // 베이스 근음 감지 (HPS, 80~200Hz) — 누적 투표로 안정적 추출
-      const rawBassTonic = detectBassTonic(sampleBufferLp);
-      if (rawBassTonic >= 0) {
-        bassTonicVotes[rawBassTonic]++;
-      }
-      // 누적 투표 최다 득표 근음
-      let dominantTonic = -1, maxVotes = 0;
+  // ── Fallback: 로컬 DSP ──────────────────────────────────────
+  // HPSS로 킥/스네어 퍼커시브 성분 제거 후 CQT chroma 추출
+  const harmonicBuf = computeHPSSHarmonic(sampleBufferRaw);
+  const chromaResult = extractChroma(harmonicBuf);
+  console.log('[chroma-dbg] chromaResult:', chromaResult ? `validWindows=${chromaResult.validWindows}` : 'null');
+  if (chromaResult) {
+    for (let i = 0; i < 12; i++) {
+      cumulativeChroma[i] = (cumulativeChroma[i] * chromaCycleCount + chromaResult.chroma[i])
+                            / (chromaCycleCount + 1);
+    }
+    chromaCycleCount++;
+
+    const KN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    const top = Array.from(cumulativeChroma).map((v,i)=>({n:KN[i],v})).sort((a,b)=>b.v-a.v);
+    console.log('[chroma]', top.slice(0,4).map(x=>`${x.n}:${x.v.toFixed(3)}`).join(' '));
+
+    // bass tonic: CQT bass octave(A2~G#3) 누적 → 가장 강한 bin
+    for (let i = 0; i < 12; i++) bassTonicVotes[i] += chromaResult.bassChroma[i];
+    if (chromaCycleCount >= 5) {
+      let maxV = 0, maxI = -1;
       for (let i = 0; i < 12; i++) {
-        if (bassTonicVotes[i] > maxVotes) { maxVotes = bassTonicVotes[i]; dominantTonic = i; }
+        if (bassTonicVotes[i] > maxV) { maxV = bassTonicVotes[i]; maxI = i; }
       }
-      console.log(`[bass-tonic] votes=${Array.from(bassTonicVotes)} dominant=${dominantTonic}`);
-
-      sendToSandbox(harmonicBuf, flat, SAMPLE_RATE, dominantTonic);
-
-      // 백엔드 WebSocket으로도 동일 타이밍에 PCM 전송 (별도 타이머 없음)
-      sendPcmToBackend();
+      let total = 0;
+      for (let i = 0; i < 12; i++) total += bassTonicVotes[i];
+      stableBassTonic = (total > 0 && maxV >= total * 0.25) ? maxI : -1;
+    }
+    const KN2 = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    console.log('[bass-stable]', stableBassTonic >= 0 ? KN2[stableBassTonic] : 'none');
+    const keyMatch = matchKeyProfile(cumulativeChroma, stableBassTonic);
+    if (keyMatch) {
+      const newKey = keyMatch.primary;
+      if (stableKey === null) {
+        stableKey = newKey;
+        stableSecondKey = keyMatch.secondary;
+      } else if (newKey !== stableKey) {
+        if (newKey === keyCandidate) {
+          keyCandidateCount++;
+          if (keyCandidateCount >= KEY_SWITCH_THRESHOLD) {
+            stableKey = newKey;
+            stableSecondKey = keyMatch.secondary;
+            keyCandidate = null;
+            keyCandidateCount = 0;
+          }
+        } else {
+          keyCandidate = newKey;
+          keyCandidateCount = 1;
+        }
+      } else {
+        keyCandidate = null;
+        keyCandidateCount = 0;
+        stableSecondKey = keyMatch.secondary;
+      }
+      lastKeyConfidence = keyMatch.confidence;
     }
   }
 
-  if (!essentiaHasRun) return;  // Essentia 첫 결과 전까지 UI 표시 안 함
+  // ── BPM ──
+  const bpmResult = analyzeBPM(sampleBufferHp);
+  if (bpmResult !== null) {
+    bpmHistory.push(bpmResult);
+    if (bpmHistory.length > BPM_HISTORY_MAX) bpmHistory.shift();
+    if (bpmHistory.length >= 3) {
+      const sorted = [...bpmHistory].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const medianFloat = sorted.length % 2 === 0
+        ? (sorted[mid - 1] + sorted[mid]) / 2
+        : sorted[mid];
+      lastBpm = Math.round(medianFloat * 10) / 10;  // 소수점 1자리까지 유지
+    }
+  }
+
+  if (analysisCount < 3) return;
   sendResults();
 }
 
@@ -788,13 +747,8 @@ function matchKeyProfile(chroma, bassTonic) {
 
     for (let [corr, label, rootShift] of candidates) {
       // Bass tonic constraint: 근음이 bassTonic과 다르면 페널티
-      // 상대조 예외: C Major ↔ A Minor 등 (Major의 relative minor = bassTonic+9, minor의 relative major = bassTonic+3)
-      if (bassTonic >= 0) {
-        const isRelativeKey = (label.includes('Minor') && rootShift === (bassTonic + 9) % 12) ||
-                              (label.includes('Major') && rootShift === (bassTonic + 3) % 12);
-        if (rootShift !== bassTonic && !isRelativeKey) {
-          corr *= 0.7;
-        }
+      if (bassTonic >= 0 && rootShift !== bassTonic) {
+        corr *= 0.7;
       }
       if (corr > bestCorr) {
         secondCorr = bestCorr; secondKey = bestKey;
@@ -836,10 +790,10 @@ function detectBassTonic(rawBuffer) {
     power[i] = re[i] * re[i] + im[i] * im[i];
   }
 
-  // HPS: 100~220Hz 대역 — 킥 fundamental(60-100Hz) 완전 제외, 808/베이스(A2=110Hz~) 포함
+  // HPS: 80~200Hz 대역의 bin 범위
   const binHz = SAMPLE_RATE / FFT_SIZE;
-  const loKick = Math.floor(100 / binHz);  // 80→100Hz: 킥드럼 leakage 차단
-  const hiBass = Math.floor(220 / binHz);  // 200→220Hz: A3(220Hz) 포함
+  const loKick = Math.floor(80 / binHz);   // 킥 컷
+  const hiBass = Math.floor(200 / binHz);  // 베이스 상한
 
   // HPS (harmonic product): power[k] * power[2k] * power[3k]
   let bestBin = -1, bestHPS = 0;
