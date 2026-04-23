@@ -3,92 +3,6 @@
 // BPM: Mel Spectral Flux → Autocorrelation + Harmonic Comb + Perceptual Tempo Prior
 
 // ============================================================
-// Backend WebSocket (Essentia)
-// ============================================================
-// Railway 배포 후 아래 URL을 wss://your-service.up.railway.app/api/v1/ws/analyze 로 변경
-const BACKEND_WS_URL = 'wss://unmixaudio-production.up.railway.app/api/v1/ws/analyze';
-let analysisWs = null;
-let backendAvailable = false;
-let backendPermanentlyUnavailable = false;  // essentia 미설치 등 재연결 무의미한 경우
-let backendAccumSec = 0;  // 백엔드가 누적한 오디오 시간(초)
-
-function connectAnalysisWs() {
-  try {
-    analysisWs = new WebSocket(BACKEND_WS_URL);
-    analysisWs.binaryType = 'arraybuffer';
-
-    analysisWs.onopen = () => {
-      backendAvailable = true;
-      backendAccumSec = 0;
-      console.log('[backend] WebSocket connected');
-      // Railway 프록시 idle timeout 방지 — 30초마다 ping
-      if (analysisWs._pingTimer) clearInterval(analysisWs._pingTimer);
-      analysisWs._pingTimer = setInterval(() => {
-        if (analysisWs && analysisWs.readyState === WebSocket.OPEN) {
-          analysisWs.send(JSON.stringify({ type: 'ping' }));
-        }
-      }, 30000);
-    };
-
-    analysisWs.onmessage = (event) => {
-      try {
-        const result = JSON.parse(event.data);
-        if (result.error) {
-          console.warn('[backend] error:', result.error);
-          // essentia 자체가 없으면 재연결해도 의미 없음 — backendAvailable = false 유지
-          if (result.error.includes('essentia not available')) {
-            backendAvailable = false;
-            backendPermanentlyUnavailable = true;
-          }
-          return;
-        }
-
-        if (result.accumSec !== undefined) backendAccumSec = result.accumSec;
-
-        // 15초 이상 누적된 결과만 신뢰 — 초반 불안정 결과 억제
-        if (backendAccumSec >= 15) {
-          if (result.bpm !== undefined) {
-            lastBpm = Math.round(result.bpm * 10) / 10;
-          }
-          if (result.key !== undefined) {
-            stableKey = result.key;
-            if (result.keyStrength !== undefined) lastKeyConfidence = result.keyStrength;
-          }
-        }
-      } catch (e) { console.warn('[backend] parse error', e); }
-    };
-
-    analysisWs.onclose = () => {
-      backendAvailable = false;
-      if (analysisWs._pingTimer) { clearInterval(analysisWs._pingTimer); analysisWs._pingTimer = null; }
-      if (backendPermanentlyUnavailable) {
-        console.log('[backend] essentia unavailable — local DSP only');
-        return;
-      }
-      console.log('[backend] WebSocket closed — reconnecting in 5s');
-      setTimeout(connectAnalysisWs, 5000);
-    };
-
-    analysisWs.onerror = () => {
-      backendAvailable = false;
-    };
-  } catch (e) {
-    backendAvailable = false;
-  }
-}
-
-function sendToBackend(pcmBuffer, sampleRate) {
-  if (!analysisWs || analysisWs.readyState !== WebSocket.OPEN) return false;
-  // 패킷: 4바이트 sampleRate (uint32 LE) + Float32LE PCM
-  const header = new Uint32Array([sampleRate]);
-  const packet = new Uint8Array(4 + pcmBuffer.byteLength);
-  packet.set(new Uint8Array(header.buffer), 0);
-  packet.set(new Uint8Array(pcmBuffer.buffer), 4);
-  analysisWs.send(packet.buffer);
-  return true;
-}
-
-// ============================================================
 // Audio Infrastructure
 // ============================================================
 let audioContext = null;
@@ -262,19 +176,11 @@ function resetAccumulators() {
   if (sampleBufferRaw && sampleBufferRaw.length > 0) sampleBufferRaw.fill(0);
   if (sampleBufferHp && sampleBufferHp.length > 0) sampleBufferHp.fill(0);
   if (sampleBufferLp && sampleBufferLp.length > 0) sampleBufferLp.fill(0);
-
-  backendAccumSec = 0;
-
-  // 백엔드 누적 버퍼도 리셋
-  if (analysisWs && analysisWs.readyState === WebSocket.OPEN) {
-    analysisWs.send(JSON.stringify({ type: 'reset' }));
-  }
 }
 
 async function startAnalysis(streamId) {
   try {
     stopAnalysis();
-    connectAnalysisWs();
 
     mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } }
@@ -339,12 +245,6 @@ async function startAnalysis(streamId) {
 }
 
 function stopAnalysis() {
-  if (analysisWs) {
-    analysisWs.onclose = null;  // 재연결 타이머 방지
-    analysisWs.close();
-    analysisWs = null;
-    backendAvailable = false;
-  }
   if (mediaRecorder && isRecording) mediaRecorder.stop();
   mediaRecorder = null;
   recordedChunks = [];
@@ -409,46 +309,7 @@ function analyzeBufferChunk() {
 
   analysisCount++;
 
-  // ── 백엔드 Essentia 사용 가능하면 WebSocket으로 전송 ──────────
-  if (backendAvailable) {
-    sendToBackend(sampleBufferRaw, SAMPLE_RATE);
-
-    // Local chroma 병렬 누적 — 백엔드 끊겨도 fallback 즉시 가능
-    const harmonicBufBg = computeHPSSHarmonic(sampleBufferRaw);
-    const chromaBg = extractChroma(harmonicBufBg);
-    if (chromaBg) {
-      for (let i = 0; i < 12; i++) {
-        cumulativeChroma[i] = (cumulativeChroma[i] * chromaCycleCount + chromaBg.chroma[i])
-                              / (chromaCycleCount + 1);
-      }
-      chromaCycleCount++;
-      for (let i = 0; i < 12; i++) bassTonicVotes[i] += chromaBg.bassChroma[i];
-      if (chromaCycleCount >= 5) {
-        let maxV = 0, maxI = -1;
-        for (let i = 0; i < 12; i++) {
-          if (bassTonicVotes[i] > maxV) { maxV = bassTonicVotes[i]; maxI = i; }
-        }
-        let total = 0;
-        for (let i = 0; i < 12; i++) total += bassTonicVotes[i];
-        stableBassTonic = (total > 0 && maxV >= total * 0.25) ? maxI : -1;
-      }
-
-      // 백엔드 누적 15초 미만(워밍업) 동안 로컬 key로 임시 표시
-      if (backendAccumSec < 15) {
-        const keyMatch = matchKeyProfile(cumulativeChroma, stableBassTonic);
-        if (keyMatch) {
-          stableKey = keyMatch.primary;
-          lastKeyConfidence = keyMatch.confidence;
-        }
-      }
-    }
-
-    sendResults();
-    return;
-  }
-
-  // ── Fallback: 로컬 DSP ──────────────────────────────────────
-  // HPSS로 킥/스네어 퍼커시브 성분 제거 후 CQT chroma 추출
+  // 로컬 DSP — HPSS로 킥/스네어 퍼커시브 성분 제거 후 CQT chroma 추출
   const harmonicBuf = computeHPSSHarmonic(sampleBufferRaw);
   const chromaResult = extractChroma(harmonicBuf);
   console.log('[chroma-dbg] chromaResult:', chromaResult ? `validWindows=${chromaResult.validWindows}` : 'null');
