@@ -214,7 +214,8 @@ window.addEventListener('message', async (event) => {
     // pcpThreshold: 0.05 — 약한 배음 유지 (단조 특유의 flat 3rd/6th/7th 보존)
     // 3 프로파일 앙상블: bgate + temperley + edma
     try {
-      const raw = normalizeRMS(new Float32Array(msg.rawBuffer), 0.1);
+      // ① HPSS harmonic 버퍼 사용 — 808 타악기 성분 제거
+      const raw = normalizeRMS(new Float32Array(msg.hpBuffer), 0.1);
       const audioVec = essentia.arrayToVector(raw);
 
       // bgate: Beatport(EDM) 데이터 기반 / edma: EDM 코퍼스 자동 추출 (Faraldo et al. 2017, EDM에서 edma > temperley)
@@ -230,7 +231,7 @@ window.addEventListener('message', async (event) => {
           36,       // hpcpSize
           3500,     // maxFrequency
           60,       // maximumSpectralPeaks
-          500,      // minFrequency — 808 배음(258/387Hz)까지 차단, 멜로디 대역(500Hz+)만 분석
+          250,      // minFrequency — 808 1차 배음(258Hz) 차단, 멜로디 저음(250Hz+) 보존 (② 500→250)
           0.05,     // pcpThreshold
           profile,
           SAMPLE_RATE,

@@ -87,11 +87,91 @@ let _bpmPrevMelBuf = null;
 let _bpmHannBuf = null;
 
 // ============================================================
+// Sandbox (Essentia WASM + TempoCNN) State
+// ============================================================
+let essentiaReady = false;
+let essentiaHasRun = false;
+let isEssentiaRunning = false;
+let keyVotes = {};  // { 'A Minor': 2.3, 'C Major': 1.1 } — strength 가중 누적
+
+// 오디오 누적 버퍼 (sandbox용 — 최대 5분)
+const MAX_ACCUM_SAMPLES = 48000 * 300;
+let accumChunks = [];
+let accumLen = 0;
+
+// ============================================================
 // Recording State
 // ============================================================
 let mediaRecorder = null;
 let recordedChunks = [];
 let isRecording = false;
+
+// ============================================================
+// Sandbox Communication
+// ============================================================
+function getSandboxFrame() {
+  return document.getElementById('essentia-sandbox');
+}
+
+function sendToSandbox(rawBuffer, hpBuffer, sampleRate, bassTonic) {
+  const frame = getSandboxFrame();
+  if (!frame || !essentiaReady || isEssentiaRunning) return;
+  isEssentiaRunning = true;
+  const rawCopy = new Float32Array(rawBuffer);
+  const hpCopy = new Float32Array(hpBuffer);
+  frame.contentWindow.postMessage(
+    { type: 'analyze', rawBuffer: rawCopy.buffer, hpBuffer: hpCopy.buffer, sampleRate, bassTonic },
+    '*',
+    [rawCopy.buffer, hpCopy.buffer]
+  );
+}
+
+function handleEssentiaResult(result) {
+  isEssentiaRunning = false;
+  essentiaHasRun = true;
+
+  if (!result.keyError && result.key && result.scale) {
+    // ③ strength 임계값: 0.4 미만이면 무시 (초반 불안정 결과 억제)
+    if ((result.strength || 0) >= 0.4) {
+      const key = `${result.key} ${result.scale.charAt(0).toUpperCase() + result.scale.slice(1)}`;
+      keyVotes[key] = (keyVotes[key] || 0) + (result.strength || 0.5);
+      let maxV = 0, bestKey = null, secondV = 0, secondKey = null;
+      for (const [k, v] of Object.entries(keyVotes)) {
+        if (v > maxV) { secondV = maxV; secondKey = bestKey; maxV = v; bestKey = k; }
+        else if (v > secondV) { secondV = v; secondKey = k; }
+      }
+      if (bestKey) {
+        stableKey = bestKey;
+        stableSecondKey = secondKey;
+        lastKeyConfidence = result.strength || 0.5;
+      }
+    }
+  }
+
+  if (!result.bpmError && result.bpm) {
+    bpmHistory.push(result.bpm);
+    if (bpmHistory.length > BPM_HISTORY_MAX) bpmHistory.shift();
+    if (bpmHistory.length >= 1) {
+      const sorted = bpmHistory.slice().sort((a, b) => a - b);
+      const medianBpm = Math.round(sorted[Math.floor(sorted.length / 2)]);
+      if (!lastBpm || Math.abs(medianBpm - lastBpm) >= 2) lastBpm = medianBpm;
+    }
+  }
+}
+
+window.addEventListener('message', (event) => {
+  const msg = event.data;
+  if (!msg || !msg.type) return;
+  if (msg.type === 'sandbox-ready') {
+    essentiaReady = true;
+    console.log('[sandbox] Essentia WASM 준비 완료');
+  } else if (msg.type === 'analysis-result') {
+    handleEssentiaResult(msg.result);
+  } else if (msg.type === 'sandbox-error') {
+    isEssentiaRunning = false;
+    console.error('[sandbox] 오류:', msg.error);
+  }
+});
 
 // ============================================================
 // Lifecycle
@@ -176,6 +256,13 @@ function resetAccumulators() {
   if (sampleBufferRaw && sampleBufferRaw.length > 0) sampleBufferRaw.fill(0);
   if (sampleBufferHp && sampleBufferHp.length > 0) sampleBufferHp.fill(0);
   if (sampleBufferLp && sampleBufferLp.length > 0) sampleBufferLp.fill(0);
+
+  // sandbox 누적 상태 초기화
+  accumChunks = [];
+  accumLen = 0;
+  keyVotes = {};
+  essentiaHasRun = false;
+  isEssentiaRunning = false;
 }
 
 async function startAnalysis(streamId) {
@@ -292,6 +379,10 @@ function stopAnalysis() {
   _bpmMelBuf = null;
   _bpmPrevMelBuf = null;
   _bpmHannBuf = null;
+
+  // sandbox 누적 버퍼 해제
+  accumChunks = [];
+  accumLen = 0;
 }
 
 // ============================================================
@@ -378,6 +469,42 @@ function analyzeBufferChunk() {
         : sorted[mid];
       lastBpm = Math.round(medianFloat * 10) / 10;  // 소수점 1자리까지 유지
     }
+  }
+
+  // ── Sandbox (Essentia WASM + TempoCNN) 호출 ──────────────────
+  // 2초 신규 오디오를 누적 버퍼에 추가 (최대 5분 유지)
+  try {
+    const newSamples = Math.floor(SAMPLE_RATE * 2);
+    const newChunk = sampleBufferRaw.slice(-newSamples);
+    accumChunks.push(newChunk);
+    accumLen += newChunk.length;
+    while (accumLen > MAX_ACCUM_SAMPLES && accumChunks.length > 0) {
+      accumLen -= accumChunks.shift().length;
+    }
+
+    // ESSENTIA_EVERY 사이클마다 sandbox로 전송 (30초 간격)
+    const ESSENTIA_EVERY = 15;
+    if (accumLen >= SAMPLE_RATE * 10 && analysisCount % ESSENTIA_EVERY === 0) {
+      // 누적 버퍼 합치기 (ESSENTIA_EVERY 간격으로만 실행 — 핫루프 아님)
+      const flatRaw = new Float32Array(accumLen);
+      let off = 0;
+      for (const c of accumChunks) { flatRaw.set(c, off); off += c.length; }
+
+      // HPSS harmonic 버퍼 계산 (최근 30초 분량 사용)
+      const harmonicForSandbox = computeHPSSHarmonic(
+        flatRaw.subarray(-Math.min(accumLen, SAMPLE_RATE * 30))
+      );
+
+      // bass tonic 최다 득표값 전달
+      let dominantTonic = -1, maxVotes = 0;
+      for (let i = 0; i < 12; i++) {
+        if (bassTonicVotes[i] > maxVotes) { maxVotes = bassTonicVotes[i]; dominantTonic = i; }
+      }
+
+      sendToSandbox(harmonicForSandbox, harmonicForSandbox, SAMPLE_RATE, dominantTonic);
+    }
+  } catch (e) {
+    console.error('[sandbox-accum] 오류:', e);
   }
 
   if (analysisCount < 3) return;
