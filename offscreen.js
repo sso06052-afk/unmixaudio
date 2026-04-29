@@ -54,7 +54,7 @@ let melFilterBank = null;
 
 const BPM_MIN = 50;
 const BPM_MAX = 220;
-const TEMPO_PRIOR_CENTER = 128;   // house/techno/trap 커버하는 중심
+const TEMPO_PRIOR_CENTER = 95;    // hip-hop/trap(70-100BPM) 중심 — 128은 trap 곡을 140-150으로 뻥튀기
 const TEMPO_PRIOR_SIGMA  = 0.85;  // 넓게 — 50~220 BPM 전 구간 0.5 이상 유지
 
 // ============================================================
@@ -128,6 +128,11 @@ function sendToSandbox(rawBuffer, hpBuffer, sampleRate, bassTonic) {
 
 function handleEssentiaResult(result) {
   isEssentiaRunning = false;
+  // 첫 sandbox 결과 도착 시 로컬 DSP BPM 히스토리 폐기 (오염 제거)
+  if (!essentiaHasRun) {
+    bpmHistory = [];
+    lastBpm = null;
+  }
   essentiaHasRun = true;
 
   if (!result.keyError && result.key && result.scale) {
@@ -428,46 +433,52 @@ function analyzeBufferChunk() {
     }
     const KN2 = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
     console.log('[bass-stable]', stableBassTonic >= 0 ? KN2[stableBassTonic] : 'none');
-    const keyMatch = matchKeyProfile(cumulativeChroma, stableBassTonic);
-    if (keyMatch) {
-      const newKey = keyMatch.primary;
-      if (stableKey === null) {
-        stableKey = newKey;
-        stableSecondKey = keyMatch.secondary;
-      } else if (newKey !== stableKey) {
-        if (newKey === keyCandidate) {
-          keyCandidateCount++;
-          if (keyCandidateCount >= KEY_SWITCH_THRESHOLD) {
-            stableKey = newKey;
-            stableSecondKey = keyMatch.secondary;
-            keyCandidate = null;
-            keyCandidateCount = 0;
+    // sandbox 결과 도착 후엔 로컬 CQT key 무시 (덮어쓰기 방지)
+    if (!essentiaHasRun) {
+      const keyMatch = matchKeyProfile(cumulativeChroma, stableBassTonic);
+      if (keyMatch) {
+        const newKey = keyMatch.primary;
+        if (stableKey === null) {
+          stableKey = newKey;
+          stableSecondKey = keyMatch.secondary;
+        } else if (newKey !== stableKey) {
+          if (newKey === keyCandidate) {
+            keyCandidateCount++;
+            if (keyCandidateCount >= KEY_SWITCH_THRESHOLD) {
+              stableKey = newKey;
+              stableSecondKey = keyMatch.secondary;
+              keyCandidate = null;
+              keyCandidateCount = 0;
+            }
+          } else {
+            keyCandidate = newKey;
+            keyCandidateCount = 1;
           }
         } else {
-          keyCandidate = newKey;
-          keyCandidateCount = 1;
+          keyCandidate = null;
+          keyCandidateCount = 0;
+          stableSecondKey = keyMatch.secondary;
         }
-      } else {
-        keyCandidate = null;
-        keyCandidateCount = 0;
-        stableSecondKey = keyMatch.secondary;
+        lastKeyConfidence = keyMatch.confidence;
       }
-      lastKeyConfidence = keyMatch.confidence;
     }
   }
 
   // ── BPM ──
-  const bpmResult = analyzeBPM(sampleBufferHp);
-  if (bpmResult !== null) {
-    bpmHistory.push(bpmResult);
-    if (bpmHistory.length > BPM_HISTORY_MAX) bpmHistory.shift();
-    if (bpmHistory.length >= 3) {
-      const sorted = [...bpmHistory].sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      const medianFloat = sorted.length % 2 === 0
-        ? (sorted[mid - 1] + sorted[mid]) / 2
-        : sorted[mid];
-      lastBpm = Math.round(medianFloat * 10) / 10;  // 소수점 1자리까지 유지
+  // sandbox 결과 도착 후엔 로컬 BPM history 폐기됨 + 신규 push 차단 (TempoCNN만 사용)
+  if (!essentiaHasRun) {
+    const bpmResult = analyzeBPM(sampleBufferHp);
+    if (bpmResult !== null) {
+      bpmHistory.push(bpmResult);
+      if (bpmHistory.length > BPM_HISTORY_MAX) bpmHistory.shift();
+      if (bpmHistory.length >= 3) {
+        const sorted = [...bpmHistory].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        const medianFloat = sorted.length % 2 === 0
+          ? (sorted[mid - 1] + sorted[mid]) / 2
+          : sorted[mid];
+        lastBpm = Math.round(medianFloat * 10) / 10;
+      }
     }
   }
 
@@ -512,6 +523,9 @@ function analyzeBufferChunk() {
 }
 
 function sendResults() {
+  // sandbox(Essentia WASM + TempoCNN) 첫 결과 전까지 UI에 결과 표시 안 함
+  // → 로컬 DSP의 신뢰도 낮은 초기값을 사용자에게 보여주지 않음 ("분석 중..." 유지)
+  if (!essentiaHasRun) return;
   if (!lastBpm && !stableKey) return;
   const rmsLen = Math.min(2048, sampleBufferRaw.length);
   let sumSq = 0;
