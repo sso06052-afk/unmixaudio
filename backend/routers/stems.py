@@ -5,30 +5,28 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Request
+from fastapi.responses import FileResponse
 
 from backend.schemas.stems import StemJobResponse, StemJobResult, StemResult
 from backend.services.demucs import separate_stems
 from backend.services.denoise import denoise_stems
 from backend.services.replicate_stems import separate_stems_replicate, download_replicate_stems
-from backend.services.storage import upload_to_supabase
 from backend.config import settings
 
 router = APIRouter()
 
 ALLOWED_MODELS = {"htdemucs", "htdemucs_6s", "htdemucs_ft"}
 
-# In-memory job store (replace with DB for production)
 _jobs: dict[str, dict] = {}
 
 TMP_DIR = Path(tempfile.gettempdir()) / "unmixaudio-stems"
 TMP_DIR.mkdir(parents=True, exist_ok=True)
 
-JOB_TTL_SEC = 3600  # 1시간 후 job 메타 + 임시 파일 정리
+JOB_TTL_SEC = 3600
 
 
 def _cleanup_old_jobs() -> None:
-    """완료/실패 후 TTL 초과 job의 메타데이터와 임시 파일을 제거."""
     now = time.time()
     expired = [
         jid for jid, j in _jobs.items()
@@ -43,12 +41,12 @@ def _cleanup_old_jobs() -> None:
 
 @router.post("/extract-stems", response_model=StemJobResponse)
 async def create_stem_job(
+    request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     model: str = Form("htdemucs"),
     denoise: bool = Form(False),
 ):
-    """Accept an audio file upload and queue stem separation."""
     if model not in ALLOWED_MODELS:
         raise HTTPException(400, f"Invalid model. Allowed: {sorted(ALLOWED_MODELS)}")
 
@@ -68,18 +66,19 @@ async def create_stem_job(
     with open(input_path, "wb") as f:
         f.write(content)
 
+    base_url = str(request.base_url).rstrip("/")
+
     _jobs[job_id] = {
-        "status": "processing", "stems": None, "error": None,
+        "status": "processing", "stems": None, "local_paths": None, "error": None,
         "model": model, "created_at": time.time(),
     }
 
-    background_tasks.add_task(_process_job, job_id, input_path, str(job_dir), model, denoise)
+    background_tasks.add_task(_process_job, job_id, input_path, str(job_dir), model, denoise, base_url)
     return StemJobResponse(job_id=job_id, status="processing")
 
 
 @router.get("/extract-stems/{job_id}", response_model=StemJobResult)
 async def get_stem_job(job_id: str):
-    """Poll job status and retrieve stem URLs when complete."""
     job = _jobs.get(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -96,43 +95,84 @@ async def get_stem_job(job_id: str):
     )
 
 
-async def _process_job(job_id: str, input_path: str, job_dir: str, model: str, denoise: bool = False):
-    """Background task: Demucs (Replicate GPU 또는 로컬 CPU) → optional denoise → Supabase 업로드."""
+@router.get("/extract-stems/{job_id}/download/{stem_name}")
+async def download_stem_file(job_id: str, stem_name: str):
+    """로컬 분리 결과 파일을 직접 스트리밍 — Supabase 없이 Railway에서 서빙."""
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if job["status"] != "complete":
+        raise HTTPException(409, "Job not complete yet")
+
+    local_paths: dict = job.get("local_paths") or {}
+    path = local_paths.get(stem_name)
+    if not path or not Path(path).exists():
+        raise HTTPException(404, "Stem file not found")
+
+    return FileResponse(
+        path,
+        media_type="audio/wav",
+        filename=f"{stem_name}.wav",
+        headers={"Content-Disposition": f'attachment; filename="{stem_name}.wav"'},
+    )
+
+
+@router.delete("/extract-stems/{job_id}/cleanup")
+async def cleanup_stem_job(job_id: str):
+    """클라이언트 다운로드 완료 후 호출 — 임시 파일 및 job 메타 즉시 삭제."""
+    if job_id not in _jobs:
+        raise HTTPException(404, "Job not found")
+    job_dir = TMP_DIR / job_id
+    if job_dir.exists():
+        shutil.rmtree(job_dir, ignore_errors=True)
+    del _jobs[job_id]
+    return {"status": "cleaned"}
+
+
+async def _process_job(
+    job_id: str, input_path: str, job_dir: str, model: str, denoise: bool, base_url: str
+):
+    """Background task: Demucs 분리 → 로컬 서빙 (Supabase 없음)."""
     import os
     try:
         use_replicate = bool(settings.replicate_api_token)
 
         if use_replicate:
-            # ── Replicate 클라우드 GPU 경로 ────────────────────────────────
             os.environ["REPLICATE_API_TOKEN"] = settings.replicate_api_token
-            stem_urls = await separate_stems_replicate(input_path, model)
+            replicate_urls = await separate_stems_replicate(input_path, model)
 
             if denoise:
-                # Replicate URL → 로컬 다운로드 → noisereduce → Supabase 업로드
+                # Replicate URL → 로컬 다운로드 → noisereduce → 로컬 서빙
                 download_dir = str(Path(job_dir) / "downloaded")
-                local_paths = await download_replicate_stems(stem_urls, download_dir)
+                local_paths = await download_replicate_stems(replicate_urls, download_dir)
                 local_paths = await denoise_stems(local_paths)
-                stem_urls = {}
-                for stem_name, local_path in local_paths.items():
-                    storage_path = f"{job_id}/{stem_name}.wav"
-                    stem_urls[stem_name] = await upload_to_supabase(local_path, storage_path)
+                stem_urls = {
+                    name: f"{base_url}/api/v1/extract-stems/{job_id}/download/{name}"
+                    for name in local_paths
+                }
+            else:
+                # Replicate CDN URL을 그대로 클라이언트에 전달 (즉시 다운로드 가능)
+                local_paths = None
+                stem_urls = replicate_urls
+
         else:
-            # ── 로컬 CPU 경로 (fallback) ───────────────────────────────────
+            # 로컬 CPU — 분리 결과를 Railway에서 직접 서빙
             output_dir = str(Path(job_dir) / "output")
             local_paths = await separate_stems(input_path, job_id, output_dir, model)
-
             if denoise:
                 local_paths = await denoise_stems(local_paths)
-
-            stem_urls = {}
-            for stem_name, local_path in local_paths.items():
-                ext = Path(local_path).suffix
-                storage_path = f"{job_id}/{stem_name}{ext}"
-                stem_urls[stem_name] = await upload_to_supabase(local_path, storage_path)
+            stem_urls = {
+                name: f"{base_url}/api/v1/extract-stems/{job_id}/download/{name}"
+                for name in local_paths
+            }
 
         _jobs[job_id]["stems"] = stem_urls
+        _jobs[job_id]["local_paths"] = local_paths
         _jobs[job_id]["status"] = "complete"
 
     except Exception as exc:
         _jobs[job_id]["status"] = "failed"
         _jobs[job_id]["error"] = str(exc)
+        job_dir_path = Path(job_dir)
+        if job_dir_path.exists():
+            shutil.rmtree(job_dir_path, ignore_errors=True)
