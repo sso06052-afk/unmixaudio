@@ -218,7 +218,7 @@ chrome.action.onClicked.addListener((tab) => {
 
 // 스템 완료 알림 클릭 → 사이드패널 열고 Stems 탭 포커스
 chrome.notifications.onClicked.addListener((notificationId) => {
-  if (notificationId !== 'stems-ready') return;
+  if (notificationId !== 'tracks-ready') return;
   chrome.notifications.clear(notificationId);
   chrome.windows.getLastFocused({ populate: true }, (win) => {
     if (win) {
@@ -229,7 +229,7 @@ chrome.notifications.onClicked.addListener((notificationId) => {
 });
 
 chrome.notifications.onButtonClicked.addListener((notificationId) => {
-  if (notificationId !== 'stems-ready') return;
+  if (notificationId !== 'tracks-ready') return;
   chrome.notifications.clear(notificationId);
   chrome.windows.getLastFocused({ populate: true }, (win) => {
     if (win) {

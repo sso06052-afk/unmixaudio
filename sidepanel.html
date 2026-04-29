@@ -1513,6 +1513,46 @@
       display: block;
     }
 
+    /* ── Recording Ready Card ────────────────── */
+
+    .rec-ready-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 10px 8px;
+      padding: 8px 10px;
+      background: var(--surface);
+      border: 1px solid var(--ac-border);
+      border-radius: 2px;
+    }
+
+    .rec-ready-icon {
+      font-size: 16px;
+      opacity: 0.5;
+      flex-shrink: 0;
+    }
+
+    .rec-ready-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .rec-ready-name {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--t2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .rec-ready-duration {
+      font-family: 'Roboto Condensed', sans-serif;
+      font-size: 10px;
+      color: var(--t3);
+      margin-top: 2px;
+    }
+
     /* ── Model Selector ───────────────────────── */
 
     .model-selector {
@@ -1695,6 +1735,141 @@
     .s.y { background: #8a7a20; }
     .s.r { background: #904030; }
 
+    /* ── ToS Overlay ──────────────────────────── */
+
+    #tos-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 16px 20px;
+      overflow-y: auto;
+    }
+
+    #tos-overlay.hidden {
+      display: none;
+    }
+
+    .tos-title {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--t1);
+      margin-bottom: 10px;
+    }
+
+    .tos-subtitle {
+      font-size: 11px;
+      color: var(--t3);
+      margin-bottom: 18px;
+      line-height: 1.5;
+    }
+
+    .tos-items {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .tos-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 2px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .tos-item:hover {
+      border-color: var(--border);
+    }
+
+    .tos-check {
+      width: 14px;
+      height: 14px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      background: var(--sunken);
+      flex-shrink: 0;
+      margin-top: 1px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      color: var(--ac);
+      transition: background 0.1s, border-color 0.1s;
+    }
+
+    .tos-item.checked .tos-check {
+      background: var(--ac-dim);
+      border-color: var(--ac-border);
+    }
+
+    .tos-item-text {
+      font-size: 10px;
+      color: var(--t2);
+      line-height: 1.5;
+    }
+
+    .tos-agree-btn {
+      width: 100%;
+      padding: 10px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, #333 0%, #252525 100%);
+      border: 1px solid #444;
+      border-bottom: 2px solid var(--sunken);
+      color: var(--ac);
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.08s;
+      margin-top: auto;
+    }
+
+    .tos-agree-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .tos-agree-btn:not(:disabled):hover {
+      background: linear-gradient(180deg, #3a3a3a 0%, #2c2c2c 100%);
+    }
+
+    .tos-privacy-link {
+      display: block;
+      text-align: center;
+      margin-top: 10px;
+      font-size: 10px;
+      color: var(--t4);
+      text-decoration: none;
+    }
+
+    .tos-privacy-link:hover {
+      color: var(--t3);
+    }
+
+    /* ── Legal Footer ─────────────────────────── */
+
+    .legal-footer {
+      padding: 10px 10px 14px;
+      font-size: 9px;
+      color: var(--t4);
+      line-height: 1.5;
+      text-align: center;
+      border-top: 1px solid var(--border2);
+      margin-top: 8px;
+    }
+
     /* ── Toast (created by JS) ────────────────── */
 
     #sp-toast {
@@ -1715,6 +1890,28 @@
   </style>
 </head>
 <body>
+  <!-- ToS Overlay (shown on first run) -->
+  <div id="tos-overlay" class="hidden">
+    <div class="tos-title">Before You Start</div>
+    <p class="tos-subtitle">Please confirm the following to use UnmixAudio.</p>
+    <div class="tos-items">
+      <div class="tos-item" data-idx="0">
+        <div class="tos-check"></div>
+        <div class="tos-item-text">I will only use UnmixAudio with audio I have the legal right to analyze or record.</div>
+      </div>
+      <div class="tos-item" data-idx="1">
+        <div class="tos-check"></div>
+        <div class="tos-item-text">I understand that recording or exporting copyrighted content without permission may violate applicable laws.</div>
+      </div>
+      <div class="tos-item" data-idx="2">
+        <div class="tos-check"></div>
+        <div class="tos-item-text">I am solely responsible for how I use the recordings and exports made with this extension.</div>
+      </div>
+    </div>
+    <button class="tos-agree-btn" id="tos-agree-btn" disabled>I Agree — Continue</button>
+    <a class="tos-privacy-link" href="privacy-policy.html" target="_blank">Privacy Policy</a>
+  </div>
+
   <div class="header">
     <div class="header-left">
       <p class="app-label">UnmixAudio</p>
@@ -1731,7 +1928,7 @@
   <div class="tab-bar">
     <button class="tab-btn active" data-tab="analyzer">Analyzer</button>
     <button class="tab-btn" data-tab="library">Library</button>
-    <button class="tab-btn" data-tab="stems">Stems</button>
+    <button class="tab-btn" data-tab="stems">Tracks</button>
   </div>
 
   <!-- Analyzer View -->
@@ -1871,9 +2068,18 @@
       <div class="progress-wrap" id="rec-progress-wrap">
         <div class="progress-bar indeterminate" id="rec-progress-bar"></div>
       </div>
+      <!-- 녹음 완료 후 표시되는 카드 (blob 메모리 유지, Finder/라이브러리 불필요) -->
+      <div class="rec-ready-card" id="rec-ready-card" style="display:none;">
+        <div class="rec-ready-icon">♪</div>
+        <div class="rec-ready-info">
+          <div class="rec-ready-name" id="rec-ready-name">recording.wav</div>
+          <div class="rec-ready-duration" id="rec-ready-duration"></div>
+        </div>
+      </div>
       <div class="actions">
         <button class="btn-primary btn-rec" id="rec-start-btn" disabled><span class="rec-dot"></span>Start Recording</button>
-        <button class="btn-danger" id="rec-stop-btn" style="display:none;">Stop &amp; Extract</button>
+        <button class="btn-danger" id="rec-stop-btn" style="display:none;">Stop Recording</button>
+        <button class="btn-primary" id="rec-extract-btn" style="display:none;">Extract Tracks</button>
       </div>
     </div>
 
@@ -1890,7 +2096,7 @@
         <div class="progress-bar" id="upload-progress-bar"></div>
       </div>
       <div class="actions">
-        <button class="btn-primary" id="upload-extract-btn" disabled>Extract Stems</button>
+        <button class="btn-primary" id="upload-extract-btn" disabled>Extract Tracks</button>
       </div>
     </div>
 
@@ -1947,6 +2153,12 @@
         <button class="stem-download-btn" id="stem-piano-dl">Download</button>
       </div>
     </div>
+  </div>
+
+  <div class="legal-footer">
+    <span style="display:inline-block;background:rgba(61,154,86,0.12);border:1px solid rgba(61,154,86,0.3);border-radius:2px;padding:1px 6px;font-size:9px;font-weight:700;color:#3D9A56;letter-spacing:0.5px;margin-bottom:5px;">✓ AUDIO NEVER STORED</span><br>
+    Audio is processed in memory and permanently deleted after each request. No data is retained on any server.<br>
+    Users are responsible for ensuring they have the legal right to capture or analyze any audio content.
   </div>
 
   <script src="sidepanel.js"></script>

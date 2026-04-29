@@ -51,6 +51,10 @@ const recTimer       = $('rec-timer');
 const recProgressWrap= $('rec-progress-wrap');
 const recStartBtn    = $('rec-start-btn');
 const recStopBtn     = $('rec-stop-btn');
+const recExtractBtn  = $('rec-extract-btn');
+const recReadyCard   = $('rec-ready-card');
+const recReadyName   = $('rec-ready-name');
+const recReadyDuration = $('rec-ready-duration');
 
 const fileDropArea   = $('file-drop-area');
 const fileInput      = $('file-input');
@@ -63,12 +67,15 @@ const stemsError  = $('stems-error');
 const stemsResult = $('stems-result');
 
 // ── State ──────────────────────────────────────────────────────────────────
+const MAX_REC_SECONDS = 300; // 5분 자동 중지
+
 let isAnalyzing   = false;
 let hasBpm        = false;
 let isRecording   = false;
 let recTimerInterval = null;
 let recSeconds    = 0;
 let selectedFile  = null;
+let recordedBlob  = null; // 녹음 완료 후 blob 메모리 유지
 let denoiseEnabled = true;
 let pollInterval  = null;
 
@@ -582,7 +589,7 @@ chrome.runtime.onMessage.addListener((message) => {
     stopRecordingUI();
     const { audioBase64, mimeType } = message;
     const blob = base64ToBlob(audioBase64, mimeType || 'audio/webm');
-    uploadForStemSeparation(blob, 'recording.webm', selectedModel());
+    showRecordingReady(blob, recSeconds);
   }
 
   if (message.type === 'recording-error') {
@@ -799,16 +806,22 @@ function setRecStatus(state, text) {
 function startRecordingUI() {
   isRecording = true;
   recSeconds = 0;
-  recStartBtn.style.display = 'none';
-  recStopBtn.style.display  = 'block';
-  recTimer.style.display    = 'inline';
-  recTimer.textContent      = '0:00';
+  recordedBlob = null;
+  recReadyCard.style.display  = 'none';
+  recExtractBtn.style.display = 'none';
+  recStartBtn.style.display   = 'none';
+  recStopBtn.style.display    = 'block';
+  recTimer.style.display      = 'inline';
+  recTimer.textContent        = '0:00';
   setRecStatus('recording', 'Recording tab audio...');
   recTimerInterval = setInterval(() => {
     recSeconds++;
     const m = Math.floor(recSeconds / 60);
     const s = String(recSeconds % 60).padStart(2, '0');
     recTimer.textContent = `${m}:${s}`;
+    if (recSeconds >= MAX_REC_SECONDS) {
+      chrome.runtime.sendMessage({ type: 'stop-recording' });
+    }
   }, 1000);
 }
 
@@ -816,12 +829,21 @@ function stopRecordingUI() {
   isRecording = false;
   clearInterval(recTimerInterval);
   recTimerInterval = null;
-  recStartBtn.style.display = 'block';
-  recStopBtn.style.display  = 'none';
-  recTimer.style.display    = 'none';
-  recProgressWrap.classList.add('visible');
-  setRecStatus('processing', 'Uploading & processing...');
+  recStopBtn.style.display = 'none';
+  recTimer.style.display   = 'none';
   syncStemsRecordBtn();
+}
+
+function showRecordingReady(blob, durationSecs) {
+  recordedBlob = blob;
+  const m = Math.floor(durationSecs / 60);
+  const s = String(durationSecs % 60).padStart(2, '0');
+  recReadyName.textContent     = `recording_${m}m${s}s.wav`;
+  recReadyDuration.textContent = `${m}:${s} · ready to extract`;
+  recReadyCard.style.display   = 'flex';
+  recStartBtn.style.display    = 'block';
+  recExtractBtn.style.display  = 'block';
+  setRecStatus('done', 'Recording saved — extract when ready');
 }
 
 recStartBtn.addEventListener('click', () => {
@@ -839,6 +861,19 @@ recStartBtn.addEventListener('click', () => {
 recStopBtn.addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'stop-recording' });
   // UI update happens when 'recording-complete' message arrives
+});
+
+recExtractBtn.addEventListener('click', () => {
+  if (!recordedBlob) return;
+  clearStemsResult();
+  recReadyCard.style.display   = 'none';
+  recExtractBtn.style.display  = 'none';
+  recStartBtn.style.display    = 'none';
+  recProgressWrap.classList.add('visible');
+  setRecStatus('processing', 'Processing tracks...');
+  const filename = recReadyName.textContent || 'recording.wav';
+  uploadForStemSeparation(recordedBlob, filename, selectedModel());
+  recordedBlob = null;
 });
 
 // helper: currently selected model
@@ -942,7 +977,7 @@ function fetchWithProgress(url, options, onProgress) {
 }
 
 function startPolling(jobId) {
-  setRecStatus('processing', 'Processing stems...');
+  setRecStatus('processing', 'Processing tracks...');
   clearInterval(pollInterval);
   pollRetries = 0;
   pollInterval = setInterval(async () => {
@@ -985,7 +1020,7 @@ function displayStemResults(stems) {
   stemUrls = stems;
   recProgressWrap.classList.remove('visible');
   uploadProgressWrap.classList.remove('visible');
-  setRecStatus('done', 'Stems ready');
+  setRecStatus('done', 'Tracks ready');
   recStartBtn.disabled = !isAnalyzing;
 
   const is6s = selectedModel() === 'htdemucs_6s';
@@ -998,13 +1033,13 @@ function displayStemResults(stems) {
 
 function notifyStemsReady() {
   const stemCount = Object.keys(stemUrls).length;
-  chrome.notifications.create('stems-ready', {
+  chrome.notifications.create('tracks-ready', {
     type: 'basic',
     iconUrl: 'icons/icon128.png',
-    title: 'Stems Ready',
-    message: `${stemCount} stems extracted. Click to download.`,
+    title: 'Tracks Ready',
+    message: `${stemCount} tracks extracted. Click to export.`,
     priority: 1,
-    buttons: [{ title: 'Open Stems' }],
+    buttons: [{ title: 'Open Tracks' }],
   });
 }
 
@@ -1076,16 +1111,20 @@ function showToast(msg) {
 
 function clearStemsResult() {
   stemUrls = {};
+  recordedBlob = null;
   stemsResult.classList.remove('visible');
   stemsError.classList.remove('visible');
   stemsError.textContent = '';
   recProgressWrap.classList.remove('visible');
+  if (recReadyCard) recReadyCard.style.display = 'none';
+  if (recExtractBtn) recExtractBtn.style.display = 'none';
 }
 
 function resetStemsUploadUI() {
   uploadProgressWrap.classList.remove('visible');
   uploadExtractBtn.disabled = !selectedFile;
   recProgressWrap.classList.remove('visible');
+  recStartBtn.style.display = 'block';
   if (!isRecording) setRecStatus('idle', isAnalyzing ? 'Ready to record' : 'Start Analysis first, then record');
 }
 
@@ -1098,6 +1137,44 @@ function base64ToBlob(base64, mimeType) {
   for (let i = 0; i < bytes.length; i++) view[i] = bytes.charCodeAt(i);
   return new Blob([ab], { type: mimeType });
 }
+
+// ── ToS gate (first-run) ───────────────────────────────────────────────────
+
+(async () => {
+  const { tosAgreed } = await chrome.storage.local.get(['tosAgreed']);
+  if (tosAgreed) return;
+
+  const overlay = document.getElementById('tos-overlay');
+  const agreeBtn = document.getElementById('tos-agree-btn');
+  if (!overlay || !agreeBtn) return;
+
+  overlay.classList.remove('hidden');
+
+  const items = overlay.querySelectorAll('.tos-item');
+  const checked = new Set();
+
+  items.forEach(item => {
+    item.addEventListener('click', () => {
+      const idx = item.dataset.idx;
+      if (checked.has(idx)) {
+        checked.delete(idx);
+        item.classList.remove('checked');
+        item.querySelector('.tos-check').textContent = '';
+      } else {
+        checked.add(idx);
+        item.classList.add('checked');
+        item.querySelector('.tos-check').textContent = '✓';
+      }
+      agreeBtn.disabled = checked.size < items.length;
+    });
+  });
+
+  agreeBtn.addEventListener('click', async () => {
+    if (checked.size < items.length) return;
+    await chrome.storage.local.set({ tosAgreed: true, tosAgreedAt: Date.now() });
+    overlay.classList.add('hidden');
+  });
+})();
 
 // ── On side panel open: hydrate state ─────────────────────────────────────
 
