@@ -533,9 +533,11 @@ function analyzeBufferChunk() {
       accumLen -= accumChunks.shift().length;
     }
 
-    // ESSENTIA_EVERY 사이클마다 sandbox로 전송 (30초 간격)
-    const ESSENTIA_EVERY = 15;
-    if (accumLen >= SAMPLE_RATE * 10 && analysisCount % ESSENTIA_EVERY === 0) {
+    // Sandbox 호출 주기 — TempoCNN은 12초 분량 필요 (256 patch frames @ 11025Hz)
+    // 첫 호출: 14초 누적 시점 (analysisCount=7), 이후 10초마다 (5사이클)
+    const ESSENTIA_EVERY = 5;  // 5 사이클 = 10초 간격
+    const MIN_AUDIO_SEC = 14;  // TempoCNN 최소 12초 + 안전 여유 2초
+    if (accumLen >= SAMPLE_RATE * MIN_AUDIO_SEC && analysisCount % ESSENTIA_EVERY === 0) {
       // 누적 버퍼 합치기 (ESSENTIA_EVERY 간격으로만 실행 — 핫루프 아님)
       const flatRaw = new Float32Array(accumLen);
       let off = 0;
