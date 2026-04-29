@@ -14,3 +14,7 @@ backend/.venv/
 
 # OS
 .DS_Store
+
+# Release artifacts (Chrome Web Store 빌드 결과물)
+dist/
+*.zip
