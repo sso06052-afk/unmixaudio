@@ -289,6 +289,8 @@ window.addEventListener('message', async (event) => {
       result.key = bestKey;
       result.scale = bestScale;
       result.strength = bestStrength;
+      // key 결과 즉시 전송 — TempoCNN 완료 대기 없이 UI에 key 먼저 표시 (partial=true → BPM 생략)
+      window.parent.postMessage({ type: 'analysis-result', result: Object.assign({}, result), partial: true }, '*');
     } catch(e) {
       result.keyError = String(e);
       console.error('[sandbox] KeyExtractor:', e);
@@ -317,6 +319,7 @@ window.addEventListener('message', async (event) => {
       console.error('[sandbox] BPM:', e);
     }
 
-    window.parent.postMessage({ type: 'analysis-result', result }, '*');
+    // BPM 전용 최종 결과 (key 중복 투표 방지 — key는 partial에서 이미 처리됨)
+    window.parent.postMessage({ type: 'analysis-result', result: { bpm: result.bpm, bpmError: result.bpmError } }, '*');
   }
 });

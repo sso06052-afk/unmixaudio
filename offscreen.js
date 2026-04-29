@@ -133,8 +133,8 @@ function sendToSandbox(rawBuffer, hpBuffer, sampleRate, bassTonic) {
   );
 }
 
-function handleEssentiaResult(result) {
-  isEssentiaRunning = false;
+function handleEssentiaResult(result, partial) {
+  if (!partial) isEssentiaRunning = false;  // partial=true(key only)일 땐 TempoCNN 아직 실행 중
   // 첫 sandbox 결과 도착 시 로컬 DSP BPM 히스토리 폐기 (오염 제거)
   if (!essentiaHasRun) {
     bpmHistory = [];
@@ -207,7 +207,7 @@ window.addEventListener('message', (event) => {
     essentiaReady = true;
     console.log('[sandbox] Essentia WASM 준비 완료');
   } else if (msg.type === 'analysis-result') {
-    handleEssentiaResult(msg.result);
+    handleEssentiaResult(msg.result, msg.partial);
   } else if (msg.type === 'sandbox-error') {
     isEssentiaRunning = false;
     console.error('[sandbox] 오류:', msg.error);
