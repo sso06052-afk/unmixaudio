@@ -73,6 +73,13 @@ const KEY_SWITCH_THRESHOLD = 3;
 const BPM_HISTORY_MAX = 500;
 let bpmHistory = [];
 
+// BPM Snap & Lock — ±2-3 진동 제거
+const BPM_SNAP_TOLERANCE = 0.7;   // 정수 ±0.7 이내면 정수로 스냅 (89.4→89, 89.6→90)
+const BPM_LOCK_THRESHOLD = 3;     // 3회 연속 같은 BPM이면 잠금
+const BPM_UNLOCK_DIFF    = 5;     // 잠금 해제는 ±5 BPM 이상 차이날 때만 (실제 곡 변경)
+let bpmLockedValue = null;
+let bpmLockCount = 0;
+
 let stableKey = null;
 let stableSecondKey = null;
 let lastKeyConfidence = 0;
@@ -158,8 +165,37 @@ function handleEssentiaResult(result) {
     if (bpmHistory.length > BPM_HISTORY_MAX) bpmHistory.shift();
     if (bpmHistory.length >= 1) {
       const sorted = bpmHistory.slice().sort((a, b) => a - b);
-      const medianBpm = Math.round(sorted[Math.floor(sorted.length / 2)]);
-      if (!lastBpm || Math.abs(medianBpm - lastBpm) >= 2) lastBpm = medianBpm;
+      const medianFloat = sorted[Math.floor(sorted.length / 2)];
+
+      // ② Snap: 정수 근처(±0.7)면 정수로 (89.4→89, 89.6→90)
+      const nearestInt = Math.round(medianFloat);
+      const snapped = (Math.abs(medianFloat - nearestInt) <= BPM_SNAP_TOLERANCE)
+                      ? nearestInt
+                      : Math.round(medianFloat * 10) / 10;
+
+      // ③ Lock 메커니즘
+      if (bpmLockedValue === null) {
+        // 잠금 전: 3회 연속 ±1 이내면 잠금
+        if (lastBpm !== null && Math.abs(snapped - lastBpm) < 1) {
+          bpmLockCount++;
+          if (bpmLockCount >= BPM_LOCK_THRESHOLD) {
+            bpmLockedValue = snapped;
+            console.log(`[bpm-lock] LOCKED at ${snapped}`);
+          }
+        } else {
+          bpmLockCount = 1;
+        }
+        lastBpm = snapped;
+      } else {
+        // 잠금 후: ±5 BPM 이상 차이날 때만 해제 (곡 변경 시나리오)
+        if (Math.abs(snapped - bpmLockedValue) >= BPM_UNLOCK_DIFF) {
+          console.log(`[bpm-unlock] ${bpmLockedValue} → ${snapped}`);
+          bpmLockedValue = null;
+          bpmLockCount = 1;
+          lastBpm = snapped;
+        }
+        // 잠금 중엔 lastBpm 그대로 유지 (UI 진동 차단)
+      }
     }
   }
 }
@@ -253,6 +289,8 @@ function resetAccumulators() {
   keyCandidate = null;
   keyCandidateCount = 0;
   bpmHistory = [];
+  bpmLockedValue = null;
+  bpmLockCount = 0;
   stableKey = null;
   stableSecondKey = null;
   lastKeyConfidence = 0;
@@ -372,6 +410,8 @@ function stopAnalysis() {
   keyCandidate = null;
   keyCandidateCount = 0;
   bpmHistory = [];
+  bpmLockedValue = null;
+  bpmLockCount = 0;
   stableKey = null;
   stableSecondKey = null;
   lastKeyConfidence = 0;
