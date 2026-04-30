@@ -309,10 +309,11 @@ window.addEventListener('message', async (event) => {
         const hpVec = essentia.arrayToVector(rawForBPM);
         const rhythmResult = essentia.RhythmExtractor2013(hpVec, 220, 'multifeature', 50);
         hpVec.delete();
-        // RhythmExtractor2013은 sampleRate를 직접 받아 내부 처리 후 샘플레이트 독립적 BPM 반환
-        // 추가 보정 불필요 — 48kHz 환경에서 (SAMPLE_RATE/44100) 곱하면 BPM 8.8% 부풀림 발생
-        result.bpm = rhythmResult.bpm;
-        console.log(`[sandbox] RhythmExtractor fallback BPM=${result.bpm.toFixed(1)}`);
+        // essentia.js의 RhythmExtractor2013은 sampleRate 파라미터가 없어 내부에서 44100을 가정.
+        // 따라서 SAMPLE_RATE != 44100이면 결과 BPM이 (SAMPLE_RATE/44100) 비율만큼 부풀림 →
+        // 역수(44100/SAMPLE_RATE)로 보정 필요. (48kHz 환경에서 약 8.84% 부풀림 보정)
+        result.bpm = rhythmResult.bpm * (44100 / SAMPLE_RATE);
+        console.log(`[sandbox] RhythmExtractor fallback BPM=${result.bpm.toFixed(1)} (raw=${rhythmResult.bpm.toFixed(1)}, sr=${SAMPLE_RATE})`);
       }
     } catch(e) {
       result.bpmError = String(e);

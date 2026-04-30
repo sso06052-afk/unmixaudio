@@ -446,35 +446,35 @@ function analyzeBufferChunk() {
   analysisCount++;
 
   // 로컬 DSP — HPSS로 킥/스네어 퍼커시브 성분 제거 후 CQT chroma 추출
-  const harmonicBuf = computeHPSSHarmonic(sampleBufferRaw);
-  const chromaResult = extractChroma(harmonicBuf);
-  console.log('[chroma-dbg] chromaResult:', chromaResult ? `validWindows=${chromaResult.validWindows}` : 'null');
-  if (chromaResult) {
-    for (let i = 0; i < 12; i++) {
-      cumulativeChroma[i] = (cumulativeChroma[i] * chromaCycleCount + chromaResult.chroma[i])
-                            / (chromaCycleCount + 1);
-    }
-    chromaCycleCount++;
-
-    const KN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-    const top = Array.from(cumulativeChroma).map((v,i)=>({n:KN[i],v})).sort((a,b)=>b.v-a.v);
-    console.log('[chroma]', top.slice(0,4).map(x=>`${x.n}:${x.v.toFixed(3)}`).join(' '));
-
-    // bass tonic: CQT bass octave(A2~G#3) 누적 → 가장 강한 bin
-    for (let i = 0; i < 12; i++) bassTonicVotes[i] += chromaResult.bassChroma[i];
-    if (chromaCycleCount >= 5) {
-      let maxV = 0, maxI = -1;
+  // sandbox(Essentia) 결과 도착 후엔 어차피 폐기되므로 GC 압력/CPU 절약 위해 매 2초 사이클 스킵
+  if (!essentiaHasRun) {
+    const harmonicBuf = computeHPSSHarmonic(sampleBufferRaw);
+    const chromaResult = extractChroma(harmonicBuf);
+    console.log('[chroma-dbg] chromaResult:', chromaResult ? `validWindows=${chromaResult.validWindows}` : 'null');
+    if (chromaResult) {
       for (let i = 0; i < 12; i++) {
-        if (bassTonicVotes[i] > maxV) { maxV = bassTonicVotes[i]; maxI = i; }
+        cumulativeChroma[i] = (cumulativeChroma[i] * chromaCycleCount + chromaResult.chroma[i])
+                              / (chromaCycleCount + 1);
       }
-      let total = 0;
-      for (let i = 0; i < 12; i++) total += bassTonicVotes[i];
-      stableBassTonic = (total > 0 && maxV >= total * 0.25) ? maxI : -1;
-    }
-    const KN2 = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-    console.log('[bass-stable]', stableBassTonic >= 0 ? KN2[stableBassTonic] : 'none');
-    // sandbox 결과 도착 후엔 로컬 CQT key 무시 (덮어쓰기 방지)
-    if (!essentiaHasRun) {
+      chromaCycleCount++;
+
+      const KN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+      const top = Array.from(cumulativeChroma).map((v,i)=>({n:KN[i],v})).sort((a,b)=>b.v-a.v);
+      console.log('[chroma]', top.slice(0,4).map(x=>`${x.n}:${x.v.toFixed(3)}`).join(' '));
+
+      // bass tonic: CQT bass octave(A2~G#3) 누적 → 가장 강한 bin
+      for (let i = 0; i < 12; i++) bassTonicVotes[i] += chromaResult.bassChroma[i];
+      if (chromaCycleCount >= 5) {
+        let maxV = 0, maxI = -1;
+        for (let i = 0; i < 12; i++) {
+          if (bassTonicVotes[i] > maxV) { maxV = bassTonicVotes[i]; maxI = i; }
+        }
+        let total = 0;
+        for (let i = 0; i < 12; i++) total += bassTonicVotes[i];
+        stableBassTonic = (total > 0 && maxV >= total * 0.25) ? maxI : -1;
+      }
+      const KN2 = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+      console.log('[bass-stable]', stableBassTonic >= 0 ? KN2[stableBassTonic] : 'none');
       const keyMatch = matchKeyProfile(cumulativeChroma, stableBassTonic);
       if (keyMatch) {
         const newKey = keyMatch.primary;
@@ -547,6 +547,16 @@ function analyzeBufferChunk() {
       const harmonicForSandbox = computeHPSSHarmonic(
         flatRaw.subarray(-Math.min(accumLen, SAMPLE_RATE * 30))
       );
+
+      // essentiaHasRun=true 단계에선 매 2초 로컬 DSP가 스킵되므로
+      // bassTonicVotes가 정체되지 않도록 sandbox 호출 시점(10초마다)에 1회 누적.
+      // false 단계에선 매 2초 사이클에서 이미 누적되고 있어 이중 누적 방지를 위해 스킵.
+      if (essentiaHasRun) {
+        const sandboxChromaResult = extractChroma(harmonicForSandbox);
+        if (sandboxChromaResult) {
+          for (let i = 0; i < 12; i++) bassTonicVotes[i] += sandboxChromaResult.bassChroma[i];
+        }
+      }
 
       // bass tonic 최다 득표값 전달
       let dominantTonic = -1, maxVotes = 0;
