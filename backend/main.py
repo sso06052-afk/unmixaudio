@@ -1,4 +1,5 @@
 """UnmixAudio — FastAPI Backend"""
+import logging
 import os
 
 from fastapi import FastAPI
@@ -6,6 +7,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import assert_payment_env, settings
 from backend.routers import analyze, license, stems, webhooks
+
+# uvicorn 기본 설정이 root logger 의 INFO 출력을 가리는 경우가 있어 명시 설정.
+# 이미 핸들러가 붙어 있으면 force=True 로 재설정 (중복 핸들러 방지).
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    force=True,
+)
 
 # 결제 시스템 env 검증 — DISABLE_PAYMENT_ENV_CHECK=1 로 우회 가능 (로컬 개발용)
 if not os.getenv("DISABLE_PAYMENT_ENV_CHECK"):

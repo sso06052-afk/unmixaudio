@@ -1,16 +1,24 @@
 """라이선스 서비스 — DB CRUD 및 만료 검증.
 
-LS API 호출은 webhook 으로 push 되는 정보만 사용 (외부 API 호출 stub만 유지).
 verify_license는 DB 조회 + status/expires_at 만으로 결정.
+LS API 호출 헬퍼는 webhook 핸들러에서 license_key / subscription_id 를 조회할 때 사용.
 """
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config import settings
 from backend.models import License
 from backend.schemas.payment import LicenseCreatePayload
+
+logger = logging.getLogger(__name__)
+
+LS_API_BASE = "https://api.lemonsqueezy.com/v1"
+LS_API_TIMEOUT_SECONDS = 10.0
 
 
 def _utcnow() -> datetime:
@@ -103,12 +111,75 @@ async def update_license_status(
     return lic
 
 
-# ---- LS API 호출 stub (현재 미사용; 필요 시 확장) ----
+# ---- LS API 호출 헬퍼 ----
+#
+# LS 의 order_created webhook 은 license_key 를 포함하지 않는다.
+# 별도 LS API ( /v1/license-keys?filter[order_id]=... ) 를 호출해야 진짜 발급 키를 얻을 수 있다.
+# subscription_id 도 동일하게 /v1/subscriptions?filter[order_id]=... 로 조회.
 
-async def fetch_license_from_ls(license_key: str) -> Optional[dict]:
-    """Lemon Squeezy License API 호출 stub.
 
-    현재는 webhook push 만으로 라이선스 상태를 동기화하므로 미구현.
-    필요 시 httpx.AsyncClient 로 https://api.lemonsqueezy.com/v1/licenses/validate 호출.
+async def _ls_get(path: str, params: dict) -> Optional[dict]:
+    """LS API GET 헬퍼. 실패 시 None 반환 (에러 로깅 포함)."""
+    api_key = settings.ls_api_key
+    if not api_key:
+        logger.error("LS_API_KEY is not configured; cannot call LS API path=%s", path)
+        return None
+
+    url = f"{LS_API_BASE}{path}"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/vnd.api+json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=LS_API_TIMEOUT_SECONDS) as client:
+            resp = await client.get(url, headers=headers, params=params)
+        if resp.status_code != 200:
+            logger.error(
+                "LS API non-200 path=%s status=%s body=%s",
+                path, resp.status_code, resp.text[:300],
+            )
+            return None
+        return resp.json()
+    except httpx.HTTPError:
+        logger.exception("LS API call failed path=%s params=%s", path, params)
+        return None
+
+
+async def fetch_license_key_for_order(ls_order_id: str) -> Optional[str]:
+    """order_id 로 LS API 조회해서 license_key 문자열 반환. 없으면 None."""
+    if not ls_order_id:
+        return None
+    body = await _ls_get("/license-keys", {"filter[order_id]": ls_order_id})
+    if not body:
+        return None
+    data = body.get("data") or []
+    if not data:
+        logger.error("LS license-keys lookup empty for order_id=%s", ls_order_id)
+        return None
+    attrs = (data[0] or {}).get("attributes") or {}
+    key = attrs.get("key")
+    if not key:
+        logger.error("LS license-keys missing 'key' attribute for order_id=%s", ls_order_id)
+        return None
+    return str(key)
+
+
+async def fetch_subscription_id_for_order(ls_order_id: str) -> Optional[str]:
+    """order_id 로 LS API 조회해서 subscription_id 문자열 반환. 없으면 None.
+
+    one-time product 인 경우 subscription 이 없을 수 있으므로 None 은 정상 케이스.
     """
-    return None
+    if not ls_order_id:
+        return None
+    body = await _ls_get("/subscriptions", {"filter[order_id]": ls_order_id})
+    if not body:
+        return None
+    data = body.get("data") or []
+    if not data:
+        # one-time product 면 자연스러운 케이스. info 레벨로만.
+        logger.info("LS subscriptions lookup empty for order_id=%s (one-time product?)", ls_order_id)
+        return None
+    sub_id = (data[0] or {}).get("id")
+    if not sub_id:
+        return None
+    return str(sub_id)
