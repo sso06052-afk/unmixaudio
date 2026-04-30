@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UnmixAudio — Real-time BPM & Key detection for music producers</title>
+  <meta name="description" content="Chrome extension for music producers and DJs. Real-time BPM and Key detection (100% local) plus on-demand audio source separation. $4.99/month or $39.99/year.">
+  <style>
+    :root {
+      --bg: #0d0e10;
+      --bg-soft: #15171b;
+      --border: #2a2d33;
+      --text: #f1f3f5;
+      --text-dim: #9aa0a6;
+      --accent: #7c5cff;
+      --accent-hover: #6b4def;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+    header { padding: 64px 0 32px; text-align: center; }
+    .brand { font-size: 14px; font-weight: 600; letter-spacing: 0.18em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 18px; }
+    h1 { font-size: 44px; line-height: 1.15; margin: 0 0 18px; letter-spacing: -0.02em; }
+    .lead { font-size: 18px; color: var(--text-dim); max-width: 620px; margin: 0 auto 32px; }
+    .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+    .btn {
+      display: inline-block; padding: 12px 22px; border-radius: 8px;
+      font-weight: 600; font-size: 15px; text-decoration: none;
+      transition: background 0.15s, transform 0.05s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--bg-soft); }
+    .btn:active { transform: translateY(1px); }
+    .note { font-size: 13px; color: var(--text-dim); }
+
+    section { padding: 56px 0; border-top: 1px solid var(--border); }
+    h2 { font-size: 26px; margin: 0 0 28px; letter-spacing: -0.01em; }
+
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+    .feature {
+      background: var(--bg-soft); border: 1px solid var(--border);
+      border-radius: 10px; padding: 22px;
+    }
+    .feature h3 { margin: 0 0 8px; font-size: 16px; }
+    .feature p { margin: 0; color: var(--text-dim); font-size: 14px; }
+
+    .pricing { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+    .plan {
+      background: var(--bg-soft); border: 1px solid var(--border);
+      border-radius: 12px; padding: 28px;
+    }
+    .plan.featured { border-color: var(--accent); }
+    .plan h3 { margin: 0 0 6px; font-size: 18px; }
+    .price { font-size: 32px; font-weight: 700; margin: 8px 0 4px; letter-spacing: -0.02em; }
+    .price small { font-size: 14px; font-weight: 500; color: var(--text-dim); }
+    .plan ul { margin: 18px 0 0; padding-left: 18px; color: var(--text-dim); font-size: 14px; }
+    .plan ul li { margin-bottom: 6px; }
+
+    .privacy { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 10px; padding: 24px; }
+    .privacy h3 { margin: 0 0 10px; font-size: 16px; }
+    .privacy p { margin: 0; color: var(--text-dim); font-size: 14px; }
+
+    footer { padding: 40px 0 56px; text-align: center; color: var(--text-dim); font-size: 13px; border-top: 1px solid var(--border); }
+    footer a { color: var(--text-dim); }
+
+    @media (max-width: 560px) {
+      h1 { font-size: 32px; }
+      header { padding-top: 44px; }
+      section { padding: 40px 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">UnmixAudio</div>
+      <h1>Real-time BPM &amp; Key detection<br>for music producers and DJs.</h1>
+      <p class="lead">A Chrome extension that analyzes any browser tab's audio in real time — entirely on your device — and lets you separate stems on demand.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#pricing">See pricing</a>
+        <a class="btn btn-ghost" href="privacy-policy.html">Privacy policy</a>
+      </div>
+      <p class="note">Sold via the Chrome Web Store.</p>
+    </header>
+
+    <section>
+      <h2>What it does</h2>
+      <div class="features">
+        <div class="feature">
+          <h3>Real-time BPM &amp; Key</h3>
+          <p>Detects tempo and musical key live from any tab using Essentia WASM and TempoCNN — runs 100% on your device.</p>
+        </div>
+        <div class="feature">
+          <h3>Audio capture &amp; export</h3>
+          <p>Record up to 5 minutes from a tab and export to WAV. Every recording is auto-tagged with BPM and Key.</p>
+        </div>
+        <div class="feature">
+          <h3>Source separation</h3>
+          <p>Optional. Split a recording into vocals, drums, bass, and other stems using the Demucs model.</p>
+        </div>
+        <div class="feature">
+          <h3>Local library</h3>
+          <p>Searchable BPM/Key tagged library, stored only on your device via chrome.storage.local.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="pricing">
+      <h2>Pricing</h2>
+      <div class="pricing">
+        <div class="plan">
+          <h3>Free</h3>
+          <div class="price">$0<small> / forever</small></div>
+          <ul>
+            <li>Real-time BPM &amp; Key (unlimited)</li>
+            <li>Local library (unlimited)</li>
+            <li>Source separation: 5 / month</li>
+          </ul>
+        </div>
+        <div class="plan featured">
+          <h3>Pro Monthly</h3>
+          <div class="price">$4.99<small> / month</small></div>
+          <ul>
+            <li>Everything in Free</li>
+            <li>Unlimited source separation</li>
+            <li>Cancel anytime</li>
+          </ul>
+        </div>
+        <div class="plan">
+          <h3>Pro Annual</h3>
+          <div class="price">$39.99<small> / year</small></div>
+          <ul>
+            <li>Everything in Pro Monthly</li>
+            <li>Save ~33% vs monthly</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note" style="margin-top:18px;">Billed by Lemon Squeezy. Cancel from your Customer Portal anytime.</p>
+    </section>
+
+    <section>
+      <h2>How customers find us &amp; pay</h2>
+      <div class="privacy">
+        <h3>Distribution</h3>
+        <p>UnmixAudio is distributed exclusively via the Chrome Web Store. Customers discover us through Chrome Web Store search, music production communities (Reddit r/edmproduction, r/WeAreTheMusicMakers), and DJ forums. Pro upgrades are processed by Lemon Squeezy with the customer's credit card; license keys are delivered by email and synced across devices.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Privacy</h2>
+      <div class="privacy">
+        <h3>Audio is never stored.</h3>
+        <p>BPM and Key detection runs 100% locally — no audio leaves your device. Source separation processes audio in server memory only and deletes it the moment processing finishes. No accounts, no tracking, no ads. Read the full <a href="privacy-policy.html" style="color:var(--accent);">Privacy Policy</a>.</p>
+      </div>
+    </section>
+
+    <footer>
+      <p>&copy; 2026 UnmixAudio &middot; Contact: <a href="mailto:sso06052@naver.com">sso06052@naver.com</a></p>
+      <p><a href="privacy-policy.html">Privacy Policy</a></p>
+    </footer>
+  </div>
+</body>
+</html>
