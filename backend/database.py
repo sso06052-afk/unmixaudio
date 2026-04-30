@@ -47,13 +47,22 @@ def _get_engine() -> AsyncEngine:
             "DATABASE_URL not configured — "
             "결제/라이선스 기능을 사용하려면 backend/.env 의 DATABASE_URL 을 설정해야 함."
         )
+    # Supabase pooler(Supavisor) 호환: prepared statement 비활성화
+    # — pooler.supabase.com 경유 시 prepared statement 충돌 회피
+    dsn = _normalize_dsn(settings.database_url)
+    connect_args = {}
+    if "pooler.supabase.com" in dsn:
+        connect_args["statement_cache_size"] = 0
+        connect_args["prepared_statement_cache_size"] = 0
+
     # Railway free tier 고려: pool_size=10, max_overflow=0
     _engine = create_async_engine(
-        _normalize_dsn(settings.database_url),
+        dsn,
         pool_size=10,
         max_overflow=0,
         pool_pre_ping=True,
         echo=False,
+        connect_args=connect_args,
     )
     _session_maker = async_sessionmaker(
         _engine,
