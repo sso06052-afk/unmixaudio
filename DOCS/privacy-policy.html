@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>UnmixAudio — Privacy Policy</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 680px; margin: 40px auto; padding: 0 20px; color: #222; line-height: 1.6; }
+    h1 { font-size: 22px; margin-bottom: 4px; }
+    h2 { font-size: 15px; margin-top: 28px; margin-bottom: 6px; }
+    p, li { font-size: 14px; }
+    ul { padding-left: 20px; }
+    .updated { font-size: 12px; color: #666; margin-bottom: 28px; }
+    .highlight { background: #f5f5f5; border-left: 3px solid #333; padding: 10px 14px; margin: 16px 0; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: April 2026</p>
+
+  <p>UnmixAudio ("we", "the extension") is committed to protecting your privacy. This policy explains exactly what data is processed, where, and for how long.</p>
+
+  <div class="highlight">
+    <strong>The short version:</strong>
+    <ul style="margin: 8px 0 0 0;">
+      <li><strong>BPM &amp; Key detection: 100% local</strong> — no audio leaves your device.</li>
+      <li><strong>Track export: audio is NEVER STORED</strong> — processed in server memory only, permanently deleted within seconds.</li>
+      <li>No accounts, no tracking, no analytics, no ads.</li>
+    </ul>
+  </div>
+
+  <h2>What We Process and How</h2>
+  <ul>
+    <li>
+      <strong>BPM &amp; Key analysis (real-time, 100% local):</strong>
+      All tempo and musical key detection is performed entirely on your device inside the extension's sandboxed environment, using Essentia WASM and TensorFlow.js models bundled with the extension. No audio data is sent to any server for this analysis. No network connection is required for BPM or Key detection.
+    </li>
+    <li>
+      <strong>Track Export (source separation):</strong>
+      Only when you explicitly use the Track Export feature, your recorded audio is sent to our processing server over an encrypted HTTPS connection. The file is loaded into memory, processed by the source separation model (Demucs), and the resulting tracks are returned to your browser. The original file and all intermediate data are deleted immediately and permanently upon completion. No copy is retained on the server under any circumstances.
+    </li>
+    <li>
+      <strong>Analysis results (BPM, Key, library):</strong>
+      Stored only in <code>chrome.storage.local</code> on your own device. Never transmitted to any server or third party.
+    </li>
+  </ul>
+
+  <h2>What We Never Do</h2>
+  <ul>
+    <li>We never store audio recordings or audio data on any server.</li>
+    <li>We never log or retain any user audio in any form.</li>
+    <li>We never sell, share, or transmit your data to third parties.</li>
+    <li>We never use analytics, advertising trackers, or fingerprinting.</li>
+    <li>We never require account creation or collect personal information.</li>
+  </ul>
+
+  <h2>Server Infrastructure</h2>
+  <p>Audio processing is performed on a server hosted by Railway (railway.app). All connections are encrypted (HTTPS/WSS). The server processes audio exclusively in memory and retains no data after each request completes.</p>
+
+  <h2>User Responsibility</h2>
+  <p>UnmixAudio is an audio analysis utility. Users are solely responsible for ensuring they have the legal right to capture, analyze, or export any audio content processed through this extension.</p>
+
+  <h2>Contact</h2>
+  <p>For privacy questions, contact: sso06052@naver.com</p>
+</body>
+</html>
