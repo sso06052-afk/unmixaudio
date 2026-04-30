@@ -66,6 +66,29 @@ const uploadExtractBtn   = $('upload-extract-btn');
 const stemsError  = $('stems-error');
 const stemsResult = $('stems-result');
 
+// ── Settings / Subscription elements ───────────────────────────────────────
+const viewSettings        = $('view-settings');
+const planBadge           = $('plan-badge');
+const planBadgeIcon       = $('plan-badge-icon');
+const planBadgeText       = $('plan-badge-text');
+const quotaRow            = $('quota-row');
+const quotaUsedEl         = $('quota-used');
+const quotaTotalEl        = $('quota-total');
+const quotaBarFill        = $('quota-bar-fill');
+const renewsLine          = $('renews-line');
+const upgradeBtn          = $('upgrade-btn');
+const manageSubBtn        = $('manage-sub-btn');
+const licenseKeyInput     = $('license-key-input');
+const licenseVerifyBtn    = $('license-verify-btn');
+const licenseStatus       = $('license-status');
+
+// ── Upgrade modal elements ─────────────────────────────────────────────────
+const upgradeModal        = $('upgrade-modal');
+const upgradeMsgEl        = $('upgrade-msg');
+const upgradeMonthlyBtn   = $('upgrade-monthly-btn');
+const upgradeAnnualBtn    = $('upgrade-annual-btn');
+const upgradeCancelBtn    = $('upgrade-cancel-btn');
+
 // ── State ──────────────────────────────────────────────────────────────────
 const MAX_REC_SECONDS = 300; // 5분 자동 중지
 
@@ -82,6 +105,22 @@ let pollInterval  = null;
 // ── Analysis duration timer ───────────────────────────────────────────────
 let analysisDurationInterval = null;
 let analysisSeconds = 0;
+
+// ── Freemium state ────────────────────────────────────────────────────────
+const FREE_QUOTA_TOTAL = 5;
+
+// LemonSqueezy Checkout URLs (Store: lilmoohyunn)
+const LS_CHECKOUT_MONTHLY = 'https://lilmoohyunn.lemonsqueezy.com/checkout/buy/97ad2b07-9ec1-4936-9358-8ac89ea8c0da';
+const LS_CHECKOUT_ANNUAL  = 'https://lilmoohyunn.lemonsqueezy.com/checkout/buy/1a5554f6-0231-41bc-90d8-72c1971c73dc';
+// Customer portal — 사용자가 결제 후 받은 이메일 링크로 접근 (LS 정책상 universal portal 없음)
+const LS_CUSTOMER_PORTAL  = 'https://lilmoohyunn.lemonsqueezy.com/billing';
+
+// 모듈 메모리에 캐시 (반복적인 storage 조회 방지)
+let _deviceId      = null;       // chrome.storage.local
+let _licenseKey    = null;       // chrome.storage.sync
+let _licensePlan   = null;       // 'monthly' | 'annual' | null
+let _licenseExpiry = null;       // ISO8601 string | null
+let _quotaRemaining = null;      // null=Pro/unknown, 0~5=Free
 
 // ── Metronome state ───────────────────────────────────────────────────────
 let metroActive = false;
@@ -341,8 +380,10 @@ function switchTab(tabName) {
   viewAnalyzer.style.display = tabName === 'analyzer' ? 'block' : 'none';
   viewLibrary.style.display  = tabName === 'library'  ? 'block' : 'none';
   viewStems.style.display    = tabName === 'stems'    ? 'block' : 'none';
+  if (viewSettings) viewSettings.style.display = tabName === 'settings' ? 'block' : 'none';
   if (tabName === 'library') loadLibrary();
   if (tabName === 'stems')   syncStemsRecordBtn();
+  if (tabName === 'settings') renderSubscriptionUI();
 }
 
 tabBtns.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
@@ -931,10 +972,15 @@ async function uploadForStemSeparation(blob, filename, model = 'htdemucs') {
   formData.append('model', model);
   formData.append('denoise', denoiseEnabled ? 'true' : 'false');
 
+  // Freemium 헤더 — device_id 필수, license_key는 Pro만
+  const deviceId = await ensureDeviceId();
+  const headers = { 'X-Device-Id': deviceId };
+  if (_licenseKey) headers['X-License-Key'] = _licenseKey;
+
   try {
     const res = await fetchWithProgress(
       `${API_BASE}/api/v1/extract-stems`,
-      { method: 'POST', body: formData },
+      { method: 'POST', body: formData, headers },
       (pct) => {
         uploadProgressBar.style.width = pct + '%';
         recProgressWrap.querySelector('.progress-bar')?.style && (
@@ -943,13 +989,34 @@ async function uploadForStemSeparation(blob, filename, model = 'htdemucs') {
       }
     );
 
+    // 402 — Free quota 초과 → 업그레이드 모달
+    if (res.status === 402) {
+      const err = await res.json().catch(() => ({}));
+      // quota를 0으로 리셋해서 UI에 즉시 반영
+      _quotaRemaining = 0;
+      renderSubscriptionUI();
+      const detail = err.detail || 'Monthly free quota exceeded. Upgrade to Pro.';
+      // 모달 메시지에는 "Upgrade ... at https://..." URL이 포함될 수 있어 메시지에서 URL 제거
+      const cleanMsg = detail.replace(/\s*https?:\/\/\S+/g, '').trim();
+      showUpgradeModal(cleanMsg || 'You have used all 5 free stem extractions this month. Upgrade to Pro for unlimited.');
+      showStemsError('Free quota reached — upgrade to Pro to continue.');
+      resetStemsUploadUI();
+      return;
+    }
+
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || `Server error ${res.status}`);
     }
 
-    const { job_id } = await res.json();
-    startPolling(job_id);
+    const body = await res.json();
+    // 응답에 quota_remaining 있으면 UI 업데이트 (Free=숫자, Pro=null)
+    if ('quota_remaining' in body) {
+      _quotaRemaining = body.quota_remaining;
+      renderSubscriptionUI();
+    }
+
+    if (body.job_id) startPolling(body.job_id);
 
   } catch (err) {
     showStemsError(err.message || 'Upload failed');
@@ -961,6 +1028,12 @@ function fetchWithProgress(url, options, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open(options.method || 'POST', url);
+    // 커스텀 헤더 (X-Device-Id, X-License-Key 등)
+    if (options.headers) {
+      for (const [k, v] of Object.entries(options.headers)) {
+        if (v !== undefined && v !== null) xhr.setRequestHeader(k, v);
+      }
+    }
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100));
     };
@@ -1127,6 +1200,264 @@ function resetStemsUploadUI() {
   recStartBtn.style.display = 'block';
   if (!isRecording) setRecStatus('idle', isAnalyzing ? 'Ready to record' : 'Start Analysis first, then record');
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// FREEMIUM — Device ID, License, Quota, Upgrade Modal
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── Device ID (영구 보관, chrome.storage.local) ───────────────────────────
+async function ensureDeviceId() {
+  if (_deviceId) return _deviceId;
+  const stored = await chrome.storage.local.get('device_id');
+  if (stored.device_id) {
+    _deviceId = stored.device_id;
+    return _deviceId;
+  }
+  // crypto.randomUUID()는 사이드패널 컨텍스트에서 사용 가능 (secure context)
+  const id = crypto.randomUUID();
+  await chrome.storage.local.set({ device_id: id });
+  _deviceId = id;
+  return id;
+}
+
+// ── License (chrome.storage.sync — PC 간 동기화) ──────────────────────────
+async function loadLicenseFromStorage() {
+  const data = await chrome.storage.sync.get(['license_key', 'license_plan', 'license_expires_at']);
+  _licenseKey    = data.license_key    || null;
+  _licensePlan   = data.license_plan   || null;
+  _licenseExpiry = data.license_expires_at || null;
+  return _licenseKey;
+}
+
+async function saveLicenseToStorage(key, plan, expiresAt) {
+  _licenseKey    = key;
+  _licensePlan   = plan;
+  _licenseExpiry = expiresAt;
+  await chrome.storage.sync.set({
+    license_key: key,
+    license_plan: plan,
+    license_expires_at: expiresAt,
+  });
+}
+
+async function clearLicense() {
+  _licenseKey = null;
+  _licensePlan = null;
+  _licenseExpiry = null;
+  await chrome.storage.sync.remove(['license_key', 'license_plan', 'license_expires_at']);
+}
+
+// 키 검증 — POST /api/v1/license/verify
+async function verifyLicenseKey(key) {
+  const res = await fetch(`${API_BASE}/api/v1/license/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ license_key: key }),
+  });
+  if (res.status === 200) {
+    const body = await res.json();
+    return { valid: true, plan: body.plan, expires_at: body.expires_at };
+  }
+  if (res.status === 404) return { valid: false, reason: 'not_found' };
+  if (res.status === 410) return { valid: false, reason: 'expired' };
+  // 기타: 네트워크/서버 오류
+  const err = await res.json().catch(() => ({}));
+  throw new Error(err.detail || `Verification error (${res.status})`);
+}
+
+// ── Quota / 결제 상태 표시 ────────────────────────────────────────────────
+function isPro() {
+  return !!_licenseKey && !!_licensePlan;
+}
+
+// 다음 달 1일 (UTC 기준 Free 리셋) — 'YYYY-MM-DD'
+function nextFreeResetDate() {
+  const now = new Date();
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const y = next.getUTCFullYear();
+  const m = String(next.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(next.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// ISO8601 → 'YYYY-MM-DD'
+function formatExpiryDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '—';
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  } catch {
+    return '—';
+  }
+}
+
+function renderSubscriptionUI() {
+  if (!planBadge) return;
+
+  if (isPro()) {
+    // Pro UI
+    planBadge.classList.add('pro');
+    planBadgeIcon.textContent = '★';
+    const planName = _licensePlan === 'annual' ? 'Pro · Annual' : 'Pro · Monthly';
+    planBadgeText.textContent = planName;
+    if (quotaRow) quotaRow.classList.add('hidden');
+    if (renewsLine) {
+      const exp = formatExpiryDate(_licenseExpiry);
+      renewsLine.textContent = _licenseExpiry
+        ? `Renews on ${exp}`
+        : 'Active subscription';
+    }
+    if (upgradeBtn) upgradeBtn.style.display = 'none';
+    if (manageSubBtn) manageSubBtn.style.display = 'block';
+  } else {
+    // Free UI
+    planBadge.classList.remove('pro');
+    planBadgeIcon.textContent = '○';
+    planBadgeText.textContent = 'Free Plan';
+    if (quotaRow) quotaRow.classList.remove('hidden');
+
+    const remaining = (_quotaRemaining === null || _quotaRemaining === undefined)
+      ? FREE_QUOTA_TOTAL
+      : Math.max(0, Math.min(FREE_QUOTA_TOTAL, _quotaRemaining));
+    const used = FREE_QUOTA_TOTAL - remaining;
+    if (quotaUsedEl)  quotaUsedEl.textContent  = String(used);
+    if (quotaTotalEl) quotaTotalEl.textContent = String(FREE_QUOTA_TOTAL);
+    if (quotaBarFill) {
+      const pct = (used / FREE_QUOTA_TOTAL) * 100;
+      quotaBarFill.style.width = pct + '%';
+      quotaBarFill.classList.remove('warning', 'full');
+      if (used >= FREE_QUOTA_TOTAL) quotaBarFill.classList.add('full');
+      else if (used >= FREE_QUOTA_TOTAL - 1) quotaBarFill.classList.add('warning');
+      quotaBarFill.setAttribute('aria-valuenow', String(used));
+    }
+    if (renewsLine) renewsLine.textContent = `Resets on ${nextFreeResetDate()}`;
+    if (upgradeBtn) upgradeBtn.style.display = 'block';
+    if (manageSubBtn) manageSubBtn.style.display = 'none';
+  }
+}
+
+function setLicenseStatus(state, msg) {
+  if (!licenseStatus) return;
+  licenseStatus.classList.remove('ok', 'err', 'muted');
+  if (state) licenseStatus.classList.add(state);
+  licenseStatus.textContent = msg || '';
+}
+
+// ── Upgrade modal ─────────────────────────────────────────────────────────
+function showUpgradeModal(messageOverride) {
+  if (!upgradeModal) return;
+  if (messageOverride && upgradeMsgEl) upgradeMsgEl.textContent = messageOverride;
+  upgradeModal.classList.add('visible');
+}
+
+function hideUpgradeModal() {
+  if (!upgradeModal) return;
+  upgradeModal.classList.remove('visible');
+}
+
+if (upgradeMonthlyBtn) {
+  upgradeMonthlyBtn.addEventListener('click', () => {
+    chrome.tabs.create({ url: LS_CHECKOUT_MONTHLY });
+    hideUpgradeModal();
+  });
+}
+if (upgradeAnnualBtn) {
+  upgradeAnnualBtn.addEventListener('click', () => {
+    chrome.tabs.create({ url: LS_CHECKOUT_ANNUAL });
+    hideUpgradeModal();
+  });
+}
+if (upgradeCancelBtn) {
+  upgradeCancelBtn.addEventListener('click', hideUpgradeModal);
+}
+if (upgradeModal) {
+  // 백드롭 클릭으로 닫기
+  upgradeModal.addEventListener('click', (e) => {
+    if (e.target === upgradeModal) hideUpgradeModal();
+  });
+  // ESC 키
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && upgradeModal.classList.contains('visible')) {
+      hideUpgradeModal();
+    }
+  });
+}
+
+// Settings 탭의 Upgrade / Manage 버튼
+if (upgradeBtn) {
+  upgradeBtn.addEventListener('click', () => {
+    showUpgradeModal('Upgrade to Pro for unlimited stem extractions, no monthly limits.');
+  });
+}
+if (manageSubBtn) {
+  manageSubBtn.addEventListener('click', () => {
+    chrome.tabs.create({ url: LS_CUSTOMER_PORTAL });
+  });
+}
+
+// License 키 검증 흐름
+if (licenseVerifyBtn && licenseKeyInput) {
+  licenseVerifyBtn.addEventListener('click', async () => {
+    const key = (licenseKeyInput.value || '').trim();
+    if (!key) {
+      setLicenseStatus('err', 'Enter a license key first.');
+      return;
+    }
+    licenseVerifyBtn.disabled = true;
+    const originalLabel = licenseVerifyBtn.textContent;
+    licenseVerifyBtn.textContent = '...';
+    setLicenseStatus('muted', 'Verifying...');
+    try {
+      const result = await verifyLicenseKey(key);
+      if (result.valid) {
+        await saveLicenseToStorage(key, result.plan, result.expires_at);
+        setLicenseStatus('ok', `✓ Valid · Pro ${result.plan === 'annual' ? 'Annual' : 'Monthly'}`);
+        renderSubscriptionUI();
+        showToast('Pro activated');
+      } else if (result.reason === 'not_found') {
+        setLicenseStatus('err', '✗ Invalid key — check your purchase email.');
+      } else if (result.reason === 'expired') {
+        setLicenseStatus('err', '✗ Key expired or canceled.');
+        await clearLicense();
+        renderSubscriptionUI();
+      }
+    } catch (err) {
+      setLicenseStatus('err', err.message || 'Verification failed.');
+    } finally {
+      licenseVerifyBtn.disabled = false;
+      licenseVerifyBtn.textContent = originalLabel;
+    }
+  });
+
+  // Enter 키로도 검증 트리거
+  licenseKeyInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      licenseVerifyBtn.click();
+    }
+  });
+}
+
+// 모듈 초기화 — device_id 보장 + 저장된 license 로드
+(async () => {
+  try {
+    await ensureDeviceId();
+    await loadLicenseFromStorage();
+    if (_licenseKey && licenseKeyInput) {
+      // 저장된 키를 마스킹된 형태로 노출 (전체 키 노출 회피)
+      licenseKeyInput.value = _licenseKey;
+      const planLabel = _licensePlan === 'annual' ? 'Annual' : 'Monthly';
+      setLicenseStatus('ok', `✓ Active · Pro ${planLabel}`);
+    }
+    renderSubscriptionUI();
+  } catch (err) {
+    console.warn('[freemium] init failed:', err);
+  }
+})();
 
 // ── Utils ──────────────────────────────────────────────────────────────────
 

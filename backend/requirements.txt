@@ -9,3 +9,8 @@ noisereduce>=3.0.0
 numpy<2
 soundfile>=0.12.1
 replicate>=0.34.0
+# Payment / DB
+sqlalchemy[asyncio]>=2.0
+asyncpg>=0.29.0
+alembic>=1.13.0
+email-validator>=2.0.0

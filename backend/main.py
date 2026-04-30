@@ -1,9 +1,15 @@
 """UnmixAudio — FastAPI Backend"""
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routers import stems, analyze
-from backend.config import settings
+from backend.config import assert_payment_env, settings
+from backend.routers import analyze, license, stems, webhooks
+
+# 결제 시스템 env 검증 — DISABLE_PAYMENT_ENV_CHECK=1 로 우회 가능 (로컬 개발용)
+if not os.getenv("DISABLE_PAYMENT_ENV_CHECK"):
+    assert_payment_env()
 
 app = FastAPI(
     title="UnmixAudio API",
@@ -30,6 +36,8 @@ app.add_middleware(
 
 app.include_router(stems.router, prefix="/api/v1", tags=["stems"])
 app.include_router(analyze.router, prefix="/api/v1", tags=["analyze"])
+app.include_router(license.router, prefix="/api/v1", tags=["license"])
+app.include_router(webhooks.router, prefix="/api/v1", tags=["webhooks"])
 
 
 @app.get("/health")

@@ -4,17 +4,42 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
+from typing import Optional
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Request
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config import settings
+from backend.database import get_db
 from backend.schemas.stems import StemJobResponse, StemJobResult, StemResult
 from backend.services.demucs import separate_stems
 from backend.services.denoise import denoise_stems
-from backend.services.replicate_stems import separate_stems_replicate, download_replicate_stems
-from backend.config import settings
+from backend.services.license import verify_license
+from backend.services.quota import (
+    current_year_month,
+    get_monthly_usage,
+    increment_usage,
+)
+from backend.services.replicate_stems import (
+    download_replicate_stems,
+    separate_stems_replicate,
+)
 
 router = APIRouter()
+
+FREE_MONTHLY_QUOTA = 5
+UPGRADE_URL = "https://unmixaudio.lemonsqueezy.com/"
 
 ALLOWED_MODELS = {"htdemucs", "htdemucs_6s", "htdemucs_ft"}
 
@@ -46,9 +71,42 @@ async def create_stem_job(
     file: UploadFile = File(...),
     model: str = Form("htdemucs"),
     denoise: bool = Form(False),
+    x_device_id: str = Header(..., alias="X-Device-Id"),
+    x_license_key: Optional[str] = Header(default=None, alias="X-License-Key"),
+    db: AsyncSession = Depends(get_db),
 ):
     if model not in ALLOWED_MODELS:
         raise HTTPException(400, f"Invalid model. Allowed: {sorted(ALLOWED_MODELS)}")
+
+    if not x_device_id or len(x_device_id) > 36:
+        raise HTTPException(400, "X-Device-Id header is required (max 36 chars)")
+
+    # 클라이언트 IP — proxy 환경 고려해 X-Forwarded-For 우선
+    fwd = request.headers.get("X-Forwarded-For", "")
+    client_ip = (fwd.split(",")[0].strip() if fwd else None) or (
+        request.client.host if request.client else None
+    )
+
+    # 1) 라이선스 우선 검증
+    pro_active = False
+    if x_license_key:
+        lic = await verify_license(db, x_license_key)
+        pro_active = lic is not None
+
+    # 2) Free 사용자면 quota 검증
+    quota_remaining: Optional[int] = None
+    if not pro_active:
+        used = await get_monthly_usage(db, x_device_id, client_ip)
+        if used >= FREE_MONTHLY_QUOTA:
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    f"Monthly free quota exceeded. Upgrade to Pro at {UPGRADE_URL}"
+                ),
+            )
+        # quota 통과 — 즉시 +1 (atomic UPSERT)
+        new_count = await increment_usage(db, x_device_id, client_ip)
+        quota_remaining = max(0, FREE_MONTHLY_QUOTA - new_count)
 
     max_bytes = settings.max_upload_size_mb * 1024 * 1024
     content = await file.read(max_bytes + 1)
@@ -74,7 +132,14 @@ async def create_stem_job(
     }
 
     background_tasks.add_task(_process_job, job_id, input_path, str(job_dir), model, denoise, base_url)
-    return StemJobResponse(job_id=job_id, status="processing")
+    # quota_remaining: Pro면 None, Free면 5 - 현재사용
+    # year_month 는 디버깅/UI 표시용
+    return StemJobResponse(
+        job_id=job_id,
+        status="processing",
+        quota_remaining=quota_remaining,
+        year_month=current_year_month() if not pro_active else None,
+    )
 
 
 @router.get("/extract-stems/{job_id}", response_model=StemJobResult)

@@ -5,6 +5,9 @@ from typing import Optional
 class StemJobResponse(BaseModel):
     job_id: str
     status: str  # "queued" | "processing" | "complete" | "failed"
+    # Free quota 정보 — Pro 사용자면 None
+    quota_remaining: Optional[int] = None
+    year_month: Optional[str] = None  # 'YYYY-MM' (UTC)
 
 
 class StemResult(BaseModel):
